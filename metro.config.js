@@ -1,0 +1,9 @@
+// Expo's default Metro config + NativeWind's CSS pipeline. NativeWind
+// reads global.css at build time to register every Tailwind utility,
+// so the wrapper has to know where that file lives.
+const { getDefaultConfig } = require("expo/metro-config");
+const { withNativeWind } = require("nativewind/metro");
+
+const config = getDefaultConfig(__dirname);
+
+module.exports = withNativeWind(config, { input: "./global.css" });

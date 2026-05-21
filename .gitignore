@@ -1,0 +1,24 @@
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native build artifacts. Expo's managed workflow regenerates these
+# from app.json on each `prebuild`, so they don't belong in git.
+ios/
+android/
+
+# Secrets / env
+.env
+.env.local
+.env.*.local
+
+# Misc
+.DS_Store
+*.log
+*.tgz
+.idea/
+.vscode/

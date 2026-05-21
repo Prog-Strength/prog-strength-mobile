@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Prog Strength",
+    "slug": "prog-strength",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "progstrength",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "fitness.progstrength.app",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "fitness.progstrength.app",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

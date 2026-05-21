@@ -1,0 +1,115 @@
+name: Mobile Release
+
+# Two paths, one workflow:
+#
+#   - Every push to main runs `eas update` against the production
+#     channel — JS-only OTA delivery. App on the phone fetches the
+#     new bundle the next time it opens. No App Store review, no
+#     native rebuild, no version bump.
+#
+#   - workflow_dispatch with build=true runs `eas build` for the
+#     selected profile and (when production) auto-submits to App
+#     Store Connect. Use this when native files change — app.json,
+#     bundle id, expo SDK bump, new native dependency, app icon.
+#
+# Mirrors the api / mcp / agent release-on-push pattern, adapted for
+# the EAS toolchain.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Cut a new native build instead of an OTA update"
+        type: boolean
+        default: false
+      profile:
+        description: "EAS build profile (preview = TestFlight Internal; production = App Store track)"
+        type: choice
+        options:
+          - preview
+          - production
+        default: preview
+
+concurrency:
+  group: mobile-release
+  cancel-in-progress: false
+
+jobs:
+  update:
+    # OTA path: fires on every push to main, and on a manual dispatch
+    # when the user did NOT ask for a full build. Skipped if either:
+    # native files are likely changed (`build=true`) OR there's no
+    # push event at all.
+    if: ${{ github.event_name == 'push' || github.event.inputs.build != 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Publish OTA update
+        # `--auto` picks the channel from the current git branch's
+        # mapping in EAS dashboard (we ship "main" → production).
+        # Commit subject becomes the EAS update message so the EAS
+        # dashboard reads like a deploy log.
+        run: |
+          eas update \
+            --branch production \
+            --message "$(git log -1 --pretty=%s)" \
+            --non-interactive
+
+  build:
+    # Native path: only when the user manually fires workflow_dispatch
+    # with build=true. Runs eas build for the chosen profile and, for
+    # production, auto-submits to App Store Connect (TestFlight
+    # Internal Testing slot fills within ~30 min, no review needed).
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: EAS build
+        run: |
+          # --non-interactive is required in CI; --no-wait would let
+          # the job finish before the build does. We wait so a green
+          # workflow == a finished build, mirroring api/release.yml.
+          eas build \
+            --platform ios \
+            --profile ${{ github.event.inputs.profile }} \
+            --non-interactive
+
+      - name: Submit to App Store Connect
+        if: ${{ github.event.inputs.profile == 'production' }}
+        # Submit only for the production profile. Preview profile
+        # builds get an install link from EAS (ad-hoc distribution)
+        # and skip App Store Connect entirely.
+        run: |
+          eas submit \
+            --platform ios \
+            --profile production \
+            --latest \
+            --non-interactive
