@@ -12,7 +12,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   ScrollView,
   Text,
@@ -511,39 +510,48 @@ function Picker({
         autoFocus
         className="border-b border-border px-3 py-2 text-sm text-foreground"
       />
-      <FlatList
-        data={rows}
-        keyExtractor={(item) => item.key}
-        keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => {
-          if ("header" in item) {
-            return (
-              <Text className="bg-background px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                {item.header}
-              </Text>
-            );
-          }
-          return (
-            <Pressable
-              onPress={item.pick}
-              accessibilityRole="button"
-              className="border-b border-border/60 px-3 py-2 active:opacity-80"
-            >
-              <Text className="text-sm text-foreground" numberOfLines={1}>
-                {item.label}
-              </Text>
-              <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
-                {item.sub}
-              </Text>
-            </Pressable>
-          );
-        }}
-        ListEmptyComponent={
+      {/*
+        ScrollView (not FlatList) on purpose: this picker sits inside
+        the parent TodayView's vertical ScrollView, and a nested
+        VirtualizedList in the same orientation triggers RN's
+        windowing warning. Virtualization gives nothing useful here
+        anyway — at most a few dozen rows, all inside a max-h-64 box.
+      */}
+      <ScrollView keyboardShouldPersistTaps="handled">
+        {rows.length === 0 ? (
           <Text className="px-3 py-3 text-center text-xs text-muted">
             No matches.
           </Text>
-        }
-      />
+        ) : (
+          rows.map((item) => {
+            if ("header" in item) {
+              return (
+                <Text
+                  key={item.key}
+                  className="bg-background px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted"
+                >
+                  {item.header}
+                </Text>
+              );
+            }
+            return (
+              <Pressable
+                key={item.key}
+                onPress={item.pick}
+                accessibilityRole="button"
+                className="border-b border-border/60 px-3 py-2 active:opacity-80"
+              >
+                <Text className="text-sm text-foreground" numberOfLines={1}>
+                  {item.label}
+                </Text>
+                <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
+                  {item.sub}
+                </Text>
+              </Pressable>
+            );
+          })
+        )}
+      </ScrollView>
       <Pressable
         onPress={onClose}
         accessibilityRole="button"

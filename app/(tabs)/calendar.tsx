@@ -47,7 +47,14 @@ export default function CalendarScreen() {
   // it via useMemo keeps the grid render referentially stable.
   const grid = useMemo(() => buildMonthGrid(monthAnchor), [monthAnchor]);
   const gridStart = grid[0];
-  const gridEnd = addDays(grid[grid.length - 1], 1); // exclusive upper bound
+  // useMemo is load-bearing: addDays returns a fresh Date instance, so
+  // an inline computation here would yield a new reference each render,
+  // invalidate the useCallback below, re-fire useFocusEffect, and
+  // re-fetch in an infinite loop.
+  const gridEnd = useMemo(
+    () => addDays(grid[grid.length - 1], 1),
+    [grid],
+  );
 
   const load = useCallback(
     async (since: Date, until: Date) => {
