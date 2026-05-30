@@ -4,6 +4,7 @@
     "slug": "prog-strength",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "scheme": "progstrength",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -28,6 +29,19 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "275c4bcf-ad2d-4d06-a467-21e4c238ec86"
+      }
+    },
+    "owner": "jwallace145",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/275c4bcf-ad2d-4d06-a467-21e4c238ec86"
     }
   }
 }

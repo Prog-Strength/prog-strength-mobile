@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- App icon placeholder: dark background + bold "PS" wordmark in
+       the accent blue. Designed to read at the 60×60 sizes iOS uses
+       on the home screen and in Settings, so the glyphs are large
+       and the letter-spacing is tight.
+
+       Replace with a real icon any time. Just drop a 1024×1024 PNG at
+       assets/icon.png and re-run the build. The source SVG can stay
+       checked in as a fallback. -->
+  <rect width="1024" height="1024" fill="#0a0a0b"/>
+  <text
+    x="512"
+    y="512"
+    font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif"
+    font-size="560"
+    font-weight="800"
+    letter-spacing="-30"
+    text-anchor="middle"
+    dominant-baseline="central"
+    fill="#3b82f6">PS</text>
+</svg>

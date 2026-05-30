@@ -20,7 +20,7 @@
       "channel": "preview"
     },
     "production": {
-      "autoIncrement": "buildNumber",
+      "autoIncrement": true,
       "ios": {
         "resourceClass": "m-medium"
       },

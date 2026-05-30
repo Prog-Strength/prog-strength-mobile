@@ -3,8 +3,17 @@
 // manually-cleared token doesn't drop the user into a half-authed
 // screen). Per-tab navigation stacks live in subdirectories under this
 // route group.
+//
+// Tab layout per the initial-mobile-app-implementation SOW:
+//   Chat · Workouts · Calendar · Nutrition · Progress
+//
+// Five is the practical max for iOS bottom navigation. Personal
+// Records nests inside Progress and Pantry + Bodyweight nest inside
+// Nutrition via top-of-screen segmented controls (added in their
+// respective phases).
 import { useEffect, useState } from "react";
 import { Tabs, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { getToken } from "@/lib/auth";
 
 export default function TabsLayout() {
@@ -38,16 +47,54 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: "#3b82f6",
         tabBarInactiveTintColor: "#a1a1aa",
-        // We don't yet ship custom icons — labels alone are fine for
-        // a two-tab v1. Add a glyph library (e.g. @expo/vector-icons)
-        // when we add a third or fourth tab.
       }}
     >
       <Tabs.Screen
-        name="workouts"
-        options={{ title: "Workouts", headerShown: false }}
+        name="chat"
+        options={{
+          title: "Chat",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubble-outline" color={color} size={size} />
+          ),
+        }}
       />
-      <Tabs.Screen name="chat" options={{ title: "Chat" }} />
+      <Tabs.Screen
+        name="workouts"
+        options={{
+          title: "Workouts",
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="barbell-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: "Calendar",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="calendar-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="nutrition"
+        options={{
+          title: "Nutrition",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="restaurant-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="progress"
+        options={{
+          title: "Progress",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="trending-up-outline" color={color} size={size} />
+          ),
+        }}
+      />
     </Tabs>
   );
 }
