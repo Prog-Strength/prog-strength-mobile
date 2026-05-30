@@ -10,7 +10,7 @@
 // visible 6-week grid — that range covers up to 11 days outside the
 // current month, which is what the grid's leading/trailing cells
 // belong to.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -20,13 +20,9 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  listExercises,
-  listWorkouts,
-  type Exercise,
-  type Workout,
-} from "@/lib/api";
+import { listWorkouts, type Exercise, type Workout } from "@/lib/api";
 import { WorkoutRow } from "@/components/workout-row";
+import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 
 // 7-column header. Sunday-first matches the US convention the web
 // calendar uses too.
@@ -34,6 +30,7 @@ const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const { byID: exerciseByID } = useExerciseCatalog();
   const [monthAnchor, setMonthAnchor] = useState<Date>(() =>
     startOfMonth(new Date()),
   );
@@ -41,7 +38,6 @@ export default function CalendarScreen() {
     startOfLocalDay(new Date()),
   );
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,16 +61,12 @@ export default function CalendarScreen() {
       try {
         // limit=100 covers ~3 workouts/day for a 42-day window with
         // plenty of headroom. Pagination not needed at single-user scale.
-        const [page, catalog] = await Promise.all([
-          listWorkouts(token, {
-            since: since.toISOString(),
-            until: until.toISOString(),
-            limit: 100,
-          }),
-          listExercises(),
-        ]);
+        const page = await listWorkouts(token, {
+          since: since.toISOString(),
+          until: until.toISOString(),
+          limit: 100,
+        });
         setWorkouts(page.items);
-        setExercises(catalog);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.toLowerCase().includes("401")) {
@@ -90,13 +82,9 @@ export default function CalendarScreen() {
     [router],
   );
 
-  // Initial + on-month-change fetch.
-  useEffect(() => {
-    load(gridStart, gridEnd);
-  }, [load, gridStart, gridEnd]);
-
-  // Refetch when the tab regains focus — covers the case where the
-  // user logs a workout via chat and pops back to the calendar.
+  // useFocusEffect fires on first focus *and* whenever its callback
+  // identity changes — covering both initial mount, month navigation,
+  // and tab-return. A separate useEffect would double-fire on mount.
   useFocusEffect(
     useCallback(() => {
       load(gridStart, gridEnd);
@@ -125,12 +113,6 @@ export default function CalendarScreen() {
     }
     return m;
   }, [workouts]);
-
-  const exerciseByID = useMemo(() => {
-    const m = new Map<string, Exercise>();
-    for (const e of exercises) m.set(e.id, e);
-    return m;
-  }, [exercises]);
 
   const selectedDayWorkouts =
     workoutsByDay.get(localDateKey(selectedDay)) ?? [];

@@ -19,13 +19,13 @@ import {
 } from "react-native";
 import { getToken } from "@/lib/auth";
 import {
-  listExercises,
   listHeadlineExerciseDefaults,
   listMyHeadlineExercises,
   putMyHeadlineExercises,
   type Exercise,
   type HeadlineExercise,
 } from "@/lib/api";
+import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 
 // Mirrors the backend's MaxHeadlineExercises constant — same rationale
 // as web: the cap drives the Save button's enable/disable state and
@@ -41,13 +41,18 @@ export function HeadlineExercisesSheet({
   onSaved: () => void;
   onClose: () => void;
 }) {
-  const [catalog, setCatalog] = useState<Exercise[] | null>(null);
+  const { exercises: catalog, loading: catalogLoading } = useExerciseCatalog();
   const [selectedIDs, setSelectedIDs] = useState<string[]>([]);
   const [defaultIDs, setDefaultIDs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Catalog is now provided by the app-level context (one fetch per
+  // session). The sheet still needs the user's current headline
+  // selection and the curated defaults — those *are* per-open
+  // because they can change between opens (e.g. the user saved a
+  // new selection earlier in the session).
   useEffect(() => {
     if (!open) return;
     setLoading(true);
@@ -55,12 +60,10 @@ export function HeadlineExercisesSheet({
     Promise.resolve(getToken())
       .then(async (t) => {
         if (!t) throw new Error("not signed in");
-        const [cat, mine, defaults] = await Promise.all([
-          listExercises(),
+        const [mine, defaults] = await Promise.all([
           listMyHeadlineExercises(t),
           listHeadlineExerciseDefaults(t),
         ]);
-        setCatalog(cat);
         setSelectedIDs(mine.map((m: HeadlineExercise) => m.exercise_id));
         setDefaultIDs(new Set(defaults.map((d) => d.exercise_id)));
       })
@@ -69,7 +72,6 @@ export function HeadlineExercisesSheet({
   }, [open]);
 
   const byMuscleGroup = useMemo(() => {
-    if (!catalog) return new Map<string, Exercise[]>();
     const m = new Map<string, Exercise[]>();
     for (const ex of catalog) {
       for (const mg of ex.muscle_groups) {
@@ -150,7 +152,7 @@ export function HeadlineExercisesSheet({
         </View>
 
         <ScrollView contentContainerClassName="gap-4 px-4 py-4">
-          {loading && (
+          {(loading || catalogLoading) && (
             <View className="items-center py-8">
               <ActivityIndicator />
             </View>
@@ -160,7 +162,7 @@ export function HeadlineExercisesSheet({
               <Text className="text-xs text-danger">{error}</Text>
             </View>
           )}
-          {!loading && catalog && (
+          {!loading && !catalogLoading && (
             <>
               {Array.from(byMuscleGroup.entries())
                 .sort(([a], [b]) => a.localeCompare(b))

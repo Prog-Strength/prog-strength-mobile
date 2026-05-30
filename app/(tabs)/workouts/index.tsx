@@ -6,7 +6,7 @@
 // row component can show "Bench Press × 3, Squat × 5" instead of slug
 // IDs. The catalog is small and admin-curated so we don't bother
 // paginating it.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,18 +16,14 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  listExercises,
-  listWorkouts,
-  type Exercise,
-  type Workout,
-} from "@/lib/api";
+import { listWorkouts, type Workout } from "@/lib/api";
 import { WorkoutRow } from "@/components/workout-row";
+import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 
 export default function WorkoutsListScreen() {
   const router = useRouter();
+  const { byID: exerciseByID } = useExerciseCatalog();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,14 +39,8 @@ export default function WorkoutsListScreen() {
           router.replace("/login");
           return;
         }
-        // Two independent calls — kick them off in parallel so the
-        // screen is ready as soon as the slower of the two returns.
-        const [page, catalog] = await Promise.all([
-          listWorkouts(token, { limit: 50 }),
-          listExercises(),
-        ]);
+        const page = await listWorkouts(token, { limit: 50 });
         setWorkouts(page.items);
-        setExercises(catalog);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         // The API returns 401 when the JWT is expired or revoked. Wipe
@@ -69,21 +59,14 @@ export default function WorkoutsListScreen() {
     [router],
   );
 
-  // Initial load.
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  // Refetch whenever the screen comes back into focus — covers the
-  // case where the user just logged a new workout via chat and pops
-  // back to this tab. Cheap enough that we always do it.
+  // useFocusEffect fires on first focus too, so it covers the initial
+  // load *and* refetch-on-tab-return. A separate useEffect would
+  // double-fire on mount.
   useFocusEffect(
     useCallback(() => {
       load();
     }, [load]),
   );
-
-  const exerciseByID = new Map(exercises.map((e) => [e.id, e]));
 
   if (loading && workouts.length === 0) {
     return (

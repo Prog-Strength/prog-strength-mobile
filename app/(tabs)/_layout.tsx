@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getToken } from "@/lib/auth";
+import { ExerciseCatalogProvider } from "@/components/exercise-catalog-context";
 
 export default function TabsLayout() {
   const router = useRouter();
@@ -32,7 +33,11 @@ export default function TabsLayout() {
 
   if (!ready) return null;
 
+  // Catalog provider sits inside the auth gate (above) and above every
+  // screen (below), so /exercises gets fetched exactly once per
+  // authed session instead of on every tab focus.
   return (
+    <ExerciseCatalogProvider>
     <Tabs
       screenOptions={{
         // Dark-mode-only for v1 — matches the web app and our
@@ -96,5 +101,6 @@ export default function TabsLayout() {
         }}
       />
     </Tabs>
+    </ExerciseCatalogProvider>
   );
 }

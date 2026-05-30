@@ -6,20 +6,14 @@ import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  getWorkout,
-  listExercises,
-  type Exercise,
-  type Workout,
-} from "@/lib/api";
+import { getWorkout, type Workout } from "@/lib/api";
+import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 
 export default function WorkoutDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { byID: exerciseByID } = useExerciseCatalog();
   const [workout, setWorkout] = useState<Workout | null>(null);
-  const [exerciseByID, setExerciseByID] = useState<Map<string, Exercise>>(
-    new Map(),
-  );
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -31,12 +25,8 @@ export default function WorkoutDetailScreen() {
         router.replace("/login");
         return;
       }
-      const [w, catalog] = await Promise.all([
-        getWorkout(token, id),
-        listExercises(),
-      ]);
+      const w = await getWorkout(token, id);
       setWorkout(w);
-      setExerciseByID(new Map(catalog.map((e) => [e.id, e])));
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes("401")) {
