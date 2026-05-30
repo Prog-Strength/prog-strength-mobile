@@ -60,50 +60,64 @@ export default function ChatScreen() {
   const params = useLocalSearchParams<{ session?: string }>();
   const urlSessionId = typeof params.session === "string" ? params.session : null;
 
-  // Active session id. Set once per mount in the bootstrap effect,
-  // either from the URL (resume) or freshly minted (new session).
+  // Active session id. Set immediately on mount: either from the
+  // URL (resume) or a fresh client-minted UUID (new chat). For the
+  // new-chat path the server-side row is created lazily inside
+  // send() — eager creation would litter the user's history with
+  // empty sessions every time they tap the chat tab without
+  // actually sending a message.
   const [sessionId, setSessionId] = useState<string | null>(null);
-  // Flips true once the server-side session row exists. Composer is
-  // gated on it so a turn append can never 404.
-  const [sessionReady, setSessionReady] = useState(false);
+  // Whether the API has the chat_sessions row for this id. True
+  // after a successful resume GET or after the lazy POST inside
+  // send(). Drives whether send() needs to call createChatSession
+  // before appending the first turn.
+  const [sessionPersisted, setSessionPersisted] = useState(false);
+  // Loading is only meaningful for the resume path — we have to
+  // wait for the GET before we know what messages to show. The
+  // composer is gated on `!loading` so a user can't send into a
+  // session whose history hasn't loaded yet.
+  const [loading, setLoading] = useState<boolean>(!!urlSessionId);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
-  // Mint or resume the session each mount + on URL change. The cancel
-  // flag protects against a stale fetch landing after a rapid
-  // back-to-back "+ New chat".
+  // Bootstrap the session on every mount. Two paths:
+  //   - URL has ?session=<id>: GET to rehydrate (history + persisted
+  //     flag flips). Aborted via `cancelled` if the user races
+  //     forward to a New Chat before the GET resolves.
+  //   - URL is bare: mint a UUID locally and set it; no API call.
+  //     The row gets created inside send() on the first real turn.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      // Resets live inside the async body (not synchronously in the
-      // effect) so React's rules-of-hooks lint rule against sync
-      // setState in effects stays satisfied — awaits below force
-      // these updates onto a microtask tick.
-      setSessionReady(false);
+      // Reset inside the async body so React's rules-of-hooks lint
+      // against sync setState in effects stays satisfied — awaits
+      // below force these updates onto a microtask tick.
       setMessages([]);
       setError(null);
+      setSessionPersisted(false);
+      setLoading(!!urlSessionId);
+
+      if (!urlSessionId) {
+        const id = Crypto.randomUUID();
+        if (cancelled) return;
+        setSessionId(id);
+        return;
+      }
+
       try {
         const token = await getToken();
         if (!token) {
           router.replace("/login");
           return;
         }
-        if (urlSessionId) {
-          const session = await getChatSession(token, urlSessionId);
-          if (cancelled) return;
-          setSessionId(session.id);
-          setMessages(session.messages.map(persistedToUI));
-          setSessionReady(true);
-        } else {
-          const id = Crypto.randomUUID();
-          await createChatSession(token, id);
-          if (cancelled) return;
-          setSessionId(id);
-          setSessionReady(true);
-        }
+        const session = await getChatSession(token, urlSessionId);
+        if (cancelled) return;
+        setSessionId(session.id);
+        setMessages(session.messages.map(persistedToUI));
+        setSessionPersisted(true);
       } catch (err) {
         if (cancelled) return;
         const msg = err instanceof Error ? err.message : String(err);
@@ -113,6 +127,8 @@ export default function ChatScreen() {
           return;
         }
         setError(msg);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     };
     run();
@@ -130,7 +146,7 @@ export default function ChatScreen() {
 
   const send = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || streaming || !sessionReady || !sessionId) return;
+    if (!trimmed || streaming || loading || !sessionId) return;
 
     const token = await getToken();
     if (!token) {
@@ -138,6 +154,26 @@ export default function ChatScreen() {
       return;
     }
     setError(null);
+
+    // Lazy-create the session row server-side if we haven't yet —
+    // this is the first turn of a fresh chat. Done BEFORE the
+    // optimistic UI update so an early failure here doesn't leave
+    // the user staring at their own message with no way to recover.
+    if (!sessionPersisted) {
+      try {
+        await createChatSession(token, sessionId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.toLowerCase().includes("401")) {
+          await clearToken();
+          router.replace("/login");
+          return;
+        }
+        setError(msg);
+        return;
+      }
+      setSessionPersisted(true);
+    }
 
     // Optimistic update: append the user message and a placeholder
     // assistant we'll fill as deltas arrive. Doing both in one
@@ -244,7 +280,7 @@ export default function ChatScreen() {
     } finally {
       setStreaming(false);
     }
-  }, [input, messages, router, sessionId, sessionReady, streaming]);
+  }, [input, messages, router, sessionId, sessionPersisted, loading, streaming]);
 
   const startNewChat = () => {
     // Pushing /chat without ?session triggers the bootstrap effect's
@@ -310,11 +346,9 @@ export default function ChatScreen() {
         ListEmptyComponent={
           <View className="rounded-lg border border-border bg-surface px-4 py-6">
             <Text className="text-center text-sm font-medium text-foreground">
-              {sessionReady
-                ? "Chat with your strength coach"
-                : "Starting session…"}
+              {loading ? "Loading…" : "Chat with your strength coach"}
             </Text>
-            {sessionReady && (
+            {!loading && (
               <Text className="mt-1 text-center text-xs text-muted">
                 Tell them what you trained today and they&apos;ll log it.
                 Ask about your last back day, your bench progress, whatever.
@@ -334,10 +368,10 @@ export default function ChatScreen() {
         <TextInput
           value={input}
           onChangeText={setInput}
-          placeholder={sessionReady ? "Message your coach…" : "Starting session…"}
+          placeholder={loading ? "Loading…" : "Message your coach…"}
           placeholderTextColor="#71717a"
           multiline
-          editable={!streaming && sessionReady}
+          editable={!streaming && !loading && !!sessionId}
           className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
           // Cap the input box growth so the send button stays reachable
           // even mid-paragraph. Beyond this it scrolls inside the input.
@@ -345,7 +379,9 @@ export default function ChatScreen() {
         />
         <Pressable
           onPress={send}
-          disabled={streaming || !sessionReady || input.trim().length === 0}
+          disabled={
+            streaming || loading || !sessionId || input.trim().length === 0
+          }
           accessibilityRole="button"
           className="rounded-lg bg-accent px-4 py-2 active:opacity-80 disabled:opacity-40"
         >
