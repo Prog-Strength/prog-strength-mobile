@@ -16,6 +16,7 @@ import { clearToken, getToken } from "@/lib/auth";
 import { listWorkouts, type Workout } from "@/lib/api";
 import { WorkoutRow } from "@/components/workout-row";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
+import { DurationChart } from "@/components/workouts/duration-chart";
 
 type WeekSection = {
   // Stable key for SectionList: YYYY-MM-DD of the week's Monday.
@@ -120,6 +121,11 @@ export default function WorkoutsListScreen() {
       ItemSeparatorComponent={() => <View className="h-3" />}
       SectionSeparatorComponent={() => <View className="h-2" />}
       stickySectionHeadersEnabled={false}
+      ListHeaderComponent={
+        <View className="mb-3">
+          <DurationChart />
+        </View>
+      }
       ListEmptyComponent={
         error ? (
           <View className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2">
