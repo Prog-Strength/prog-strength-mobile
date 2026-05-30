@@ -1,12 +1,19 @@
 // Workout detail screen. Read-only for v1 — we don't yet support
 // editing or deleting from mobile. Shows the date, optional name and
-// notes, then every exercise's sets in order. PR badges call out any
-// records the workout produced.
-import { useCallback, useEffect, useState } from "react";
+// notes, then every exercise's sets in order. Adjacent exercises that
+// share a superset_group are collapsed into one card so the visual
+// matches the way they were trained (alternating sets within the
+// group). PR badges call out any records the workout produced.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import { getWorkout, type Workout } from "@/lib/api";
+import {
+  getWorkout,
+  type Exercise,
+  type Workout,
+  type WorkoutExercise,
+} from "@/lib/api";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 
 export default function WorkoutDetailScreen() {
@@ -41,6 +48,14 @@ export default function WorkoutDetailScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Compute superset chunks unconditionally so the hook order is
+  // stable across renders — the early returns below would otherwise
+  // skip this hook when `workout` is null.
+  const chunks = useMemo(
+    () => groupBySuperset(workout?.exercises ?? []),
+    [workout?.exercises],
+  );
 
   if (!workout && !error) {
     return (
@@ -110,49 +125,150 @@ export default function WorkoutDetailScreen() {
             )}
           </View>
 
-          {workout.exercises.map((we, idx) => {
-            const name =
-              exerciseByID.get(we.exercise_id)?.name ?? we.exercise_id;
-            return (
-              <View
-                key={`${we.exercise_id}:${idx}`}
-                className="rounded-lg border border-border bg-surface px-4 py-3"
-              >
-                <View className="flex-row items-baseline justify-between gap-3">
-                  <Text className="flex-1 text-base font-medium text-foreground">
-                    {name}
-                  </Text>
-                  <Text className="text-xs text-muted">
-                    {we.sets.length}{" "}
-                    {we.sets.length === 1 ? "set" : "sets"}
-                  </Text>
-                </View>
-                {we.notes && we.notes.trim().length > 0 && (
-                  <Text className="mt-1 text-xs text-muted">{we.notes}</Text>
-                )}
-                <View className="mt-2 gap-1">
-                  {we.sets.map((s, setIdx) => (
-                    <View
-                      key={setIdx}
-                      className="flex-row items-baseline justify-between gap-3"
-                    >
-                      <Text className="text-xs text-muted">
-                        Set {setIdx + 1}
-                      </Text>
-                      <Text className="text-sm tabular-nums text-foreground">
-                        {s.reps} × {formatNumber(s.weight)} {s.unit}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            );
-          })}
+          {chunks.map((chunk, idx) =>
+            chunk.type === "single" ? (
+              <ExerciseCard
+                key={`s:${chunk.we.exercise_id}:${idx}`}
+                we={chunk.we}
+                name={exerciseByID.get(chunk.we.exercise_id)?.name ?? chunk.we.exercise_id}
+              />
+            ) : (
+              <SupersetCard
+                key={`ss:${chunk.group}:${idx}`}
+                chunk={chunk}
+                exerciseByID={exerciseByID}
+              />
+            ),
+          )}
         </View>
       </ScrollView>
     </>
   );
 }
+
+// --- exercise / superset cards ------------------------------------
+
+type ExerciseChunk =
+  | { type: "single"; we: WorkoutExercise }
+  | { type: "superset"; group: number; exercises: WorkoutExercise[] };
+
+// Walks the workout's exercises in author-order, collapsing
+// contiguous runs that share a non-null superset_group into a single
+// "superset" chunk. Non-grouped exercises pass through as "single"
+// chunks. Two non-contiguous runs with the same group value would
+// render as two separate superset cards — that's intentional, the
+// stored exercise_order is the source of truth and reordering would
+// be a worse failure mode than rendering duplicates.
+function groupBySuperset(exercises: WorkoutExercise[]): ExerciseChunk[] {
+  const chunks: ExerciseChunk[] = [];
+  for (const we of exercises) {
+    const sg = we.superset_group;
+    if (sg == null) {
+      chunks.push({ type: "single", we });
+      continue;
+    }
+    const prev = chunks[chunks.length - 1];
+    if (prev && prev.type === "superset" && prev.group === sg) {
+      prev.exercises.push(we);
+    } else {
+      chunks.push({ type: "superset", group: sg, exercises: [we] });
+    }
+  }
+  return chunks;
+}
+
+function ExerciseCard({
+  we,
+  name,
+}: {
+  we: WorkoutExercise;
+  name: string;
+}) {
+  return (
+    <View className="rounded-lg border border-border bg-surface px-4 py-3">
+      <View className="flex-row items-baseline justify-between gap-3">
+        <Text className="flex-1 text-base font-medium text-foreground">
+          {name}
+        </Text>
+        <Text className="text-xs text-muted">
+          {we.sets.length} {we.sets.length === 1 ? "set" : "sets"}
+        </Text>
+      </View>
+      {we.notes && we.notes.trim().length > 0 && (
+        <Text className="mt-1 text-xs text-muted">{we.notes}</Text>
+      )}
+      <SetList sets={we.sets} />
+    </View>
+  );
+}
+
+function SupersetCard({
+  chunk,
+  exerciseByID,
+}: {
+  chunk: { type: "superset"; group: number; exercises: WorkoutExercise[] };
+  exerciseByID: Map<string, Exercise>;
+}) {
+  const totalSets = chunk.exercises.reduce((n, we) => n + we.sets.length, 0);
+  return (
+    <View className="rounded-lg border border-border border-l-4 border-l-accent bg-surface px-4 py-3">
+      <View className="flex-row items-baseline justify-between gap-3 border-b border-border/60 pb-2">
+        <Text className="text-xs font-semibold uppercase tracking-wider text-accent">
+          Superset
+        </Text>
+        <Text className="text-xs text-muted">
+          {chunk.exercises.length} exercises · {totalSets}{" "}
+          {totalSets === 1 ? "set" : "sets"}
+        </Text>
+      </View>
+      {chunk.exercises.map((we, i) => {
+        const name = exerciseByID.get(we.exercise_id)?.name ?? we.exercise_id;
+        // A/B/C... letter prefix matches the Strong/Hevy convention for
+        // labeling exercises inside a superset.
+        const letter = String.fromCharCode(65 + i);
+        return (
+          <View
+            key={`${we.exercise_id}:${i}`}
+            className={i === 0 ? "mt-2" : "mt-3 border-t border-border/40 pt-3"}
+          >
+            <View className="flex-row items-baseline justify-between gap-3">
+              <Text className="flex-1 text-sm font-medium text-foreground">
+                <Text className="text-accent">{letter}</Text>  {name}
+              </Text>
+              <Text className="text-xs text-muted">
+                {we.sets.length} {we.sets.length === 1 ? "set" : "sets"}
+              </Text>
+            </View>
+            {we.notes && we.notes.trim().length > 0 && (
+              <Text className="mt-1 text-xs text-muted">{we.notes}</Text>
+            )}
+            <SetList sets={we.sets} />
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function SetList({ sets }: { sets: WorkoutExercise["sets"] }) {
+  return (
+    <View className="mt-2 gap-1">
+      {sets.map((s, i) => (
+        <View
+          key={i}
+          className="flex-row items-baseline justify-between gap-3"
+        >
+          <Text className="text-xs text-muted">Set {i + 1}</Text>
+          <Text className="text-sm tabular-nums text-foreground">
+            {s.reps} × {formatNumber(s.weight)} {s.unit}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// --- helpers ------------------------------------------------------
 
 function formatNumber(v: number): string {
   if (!Number.isFinite(v)) return "—";
