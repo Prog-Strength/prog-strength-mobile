@@ -928,6 +928,166 @@ export async function deleteRecipe(
   }
 }
 
+// --- Chat sessions -----------------------------------------------
+
+/**
+ * One persistent chat conversation. The API returns these from
+ * /chat-sessions list/get endpoints. The companion `messages` array
+ * is only present on the per-id GET (and after POST on
+ * /chat-sessions/{id}/messages).
+ */
+export type ChatSession = {
+  id: string;
+  user_id: string;
+  title: string; // empty until the LLM-title PATCH lands
+  created_at: string;
+  updated_at: string;
+  last_message_at: string;
+};
+
+export type ChatSessionListItem = ChatSession & {
+  message_count: number;
+};
+
+export type ChatMessage = {
+  id: number;
+  session_id: string;
+  position: number;
+  role: "user" | "assistant";
+  content: string;
+  model?: string | null;
+  tools_json?: string | null;
+  created_at: string;
+};
+
+export type ChatSessionWithMessages = ChatSession & {
+  messages: ChatMessage[];
+};
+
+/** Payload for appending one turn to a session. */
+export type ChatTurnPayload = {
+  user: { content: string };
+  assistant: {
+    content: string;
+    model?: string;
+    tools_json?: string;
+  };
+};
+
+export async function listChatSessions(
+  token: string,
+): Promise<ChatSessionListItem[]> {
+  const resp = await fetch(`${config.apiUrl}/chat-sessions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<ChatSessionListItem[]>(resp, []);
+}
+
+export async function createChatSession(
+  token: string,
+  id: string,
+): Promise<ChatSession> {
+  const resp = await fetch(`${config.apiUrl}/chat-sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ id }),
+  });
+  const created = await unwrap<ChatSession | null>(resp, null);
+  if (!created) throw new Error("API did not return the created chat session");
+  return created;
+}
+
+export async function getChatSession(
+  token: string,
+  id: string,
+): Promise<ChatSessionWithMessages> {
+  const resp = await fetch(
+    `${config.apiUrl}/chat-sessions/${encodeURIComponent(id)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  const got = await unwrap<ChatSessionWithMessages | null>(resp, null);
+  if (!got) throw new Error("chat session not found");
+  return got;
+}
+
+/**
+ * Update the session's title. Server validates 1..80 chars after
+ * trimming; on invalid input the unwrap throws with the API's
+ * "title must be 1–80 characters" error message.
+ */
+export async function patchChatSessionTitle(
+  token: string,
+  id: string,
+  title: string,
+): Promise<ChatSession> {
+  const resp = await fetch(
+    `${config.apiUrl}/chat-sessions/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ title }),
+    },
+  );
+  const updated = await unwrap<ChatSession | null>(resp, null);
+  if (!updated) throw new Error("API did not return the updated chat session");
+  return updated;
+}
+
+export async function deleteChatSession(
+  token: string,
+  id: string,
+): Promise<void> {
+  const resp = await fetch(
+    `${config.apiUrl}/chat-sessions/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!resp.ok) {
+    let detail: string;
+    try {
+      detail = (await resp.json())?.error ?? `HTTP ${resp.status}`;
+    } catch {
+      detail = `HTTP ${resp.status}`;
+    }
+    throw new Error(detail);
+  }
+}
+
+/**
+ * Append one turn (user + assistant) to a session in a single
+ * transaction server-side. The response includes the updated session
+ * (with bumped last_message_at) and the two newly-created message
+ * rows.
+ */
+export async function appendChatTurn(
+  token: string,
+  sessionId: string,
+  turn: ChatTurnPayload,
+): Promise<ChatSessionWithMessages> {
+  const resp = await fetch(
+    `${config.apiUrl}/chat-sessions/${encodeURIComponent(sessionId)}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(turn),
+    },
+  );
+  const appended = await unwrap<ChatSessionWithMessages | null>(resp, null);
+  if (!appended) throw new Error("API did not return the appended turn");
+  return appended;
+}
+
 /**
  * Common envelope unwrapper. The API wraps every success response in
  * `{service, message, data}`; the caller only cares about `data`.

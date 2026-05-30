@@ -58,6 +58,9 @@ export default function TabsLayout() {
         name="chat"
         options={{
           title: "Chat",
+          // Stack inside chat/ owns the header so it can mount the
+          // "New chat" / "History" buttons; double-headers look bad.
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="chatbubble-outline" color={color} size={size} />
           ),
