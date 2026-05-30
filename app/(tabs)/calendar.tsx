@@ -24,9 +24,11 @@ import { listWorkouts, type Exercise, type Workout } from "@/lib/api";
 import { WorkoutRow } from "@/components/workout-row";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 
-// 7-column header. Sunday-first matches the US convention the web
-// calendar uses too.
-const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+// 7-column header. Monday-first because that's how the lifter
+// mentally chunks a training week (Monday = start of the program
+// week). Web calendar's day order should follow if/when it adopts
+// the same grid.
+const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 export default function CalendarScreen() {
   const router = useRouter();
@@ -429,9 +431,12 @@ function formatMonthYear(d: Date): string {
 // the agenda below doesn't jump when navigating months.
 function buildMonthGrid(anchor: Date): Date[] {
   const first = startOfMonth(anchor);
-  // Day of week of the 1st (0 = Sunday). We back up that many days
-  // to align the grid's first cell on a Sunday.
-  const lead = first.getDay();
+  // getDay() returns 0..6 with 0 = Sunday. For a Monday-first grid we
+  // want Monday to sit in column 0, so the rotation is
+  //   Sun(0) -> 6, Mon(1) -> 0, Tue(2) -> 1, ..., Sat(6) -> 5.
+  // (getDay() + 6) % 7 expresses that. `lead` is the count of leading
+  // trailing-from-previous-month cells we back up by.
+  const lead = (first.getDay() + 6) % 7;
   const start = addDays(first, -lead);
   const out: Date[] = [];
   for (let i = 0; i < 42; i++) {
