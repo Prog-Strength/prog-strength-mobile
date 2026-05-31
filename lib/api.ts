@@ -730,6 +730,66 @@ export async function getDailyMacros(
   return unwrap<DailyMacros[]>(resp, []);
 }
 
+// --- Macro goals --------------------------------------------------
+
+/**
+ * Per-user daily macro targets. created_at / updated_at are nullable
+ * because the API returns a zero-valued row with null timestamps when
+ * the user has never set goals — the empty-state ring renders off
+ * `created_at === null`, not "every number is zero" (zero is a valid
+ * cleared-target value). See
+ * prog-strength-docs/sows/daily-macro-goals.md.
+ */
+export type MacroGoals = {
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  calories: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/** Payload for PUT /me/macro-goals. All four fields required. */
+export type PutMacroGoalsPayload = {
+  protein_g: number;
+  carbs_g: number;
+  fat_g: number;
+  calories: number;
+};
+
+export async function getMacroGoals(token: string): Promise<MacroGoals> {
+  const resp = await fetch(`${config.apiUrl}/me/macro-goals`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<MacroGoals>(resp, {
+    protein_g: 0,
+    carbs_g: 0,
+    fat_g: 0,
+    calories: 0,
+    created_at: null,
+    updated_at: null,
+  });
+}
+
+export async function putMacroGoals(
+  token: string,
+  payload: PutMacroGoalsPayload,
+): Promise<MacroGoals> {
+  const resp = await fetch(`${config.apiUrl}/me/macro-goals`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return unwrap<MacroGoals>(resp, {
+    ...payload,
+    created_at: null,
+    updated_at: null,
+  });
+}
+
 // --- Bodyweight ---------------------------------------------------
 
 /**

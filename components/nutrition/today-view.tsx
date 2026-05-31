@@ -23,15 +23,19 @@ import { clearToken, getToken } from "@/lib/auth";
 import {
   createNutritionLogEntry,
   deleteNutritionLogEntry,
+  getMacroGoals,
   listNutritionLog,
   listPantryItems,
   listRecipes,
+  type MacroGoals,
   type MealType,
   type NutritionLogEntry,
   type PantryItem,
   type Recipe,
 } from "@/lib/api";
 import { SegmentedControl, type Segment } from "@/components/segmented-control";
+import { MacroGoalRings } from "@/components/nutrition/macro-goal-rings";
+import { MacroGoalsSheet } from "@/components/nutrition/macro-goals-sheet";
 
 // Pin the meal section order regardless of API response ordering.
 // What users mentally expect a day to read like.
@@ -55,6 +59,8 @@ export function TodayView() {
   const [entries, setEntries] = useState<NutritionLogEntry[] | null>(null);
   const [pantry, setPantry] = useState<PantryItem[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [goals, setGoals] = useState<MacroGoals | null>(null);
+  const [showGoalsSheet, setShowGoalsSheet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
@@ -71,14 +77,16 @@ export function TodayView() {
           }
           const since = d.toISOString();
           const until = endOfLocalDay(d).toISOString();
-          const [log, p, r] = await Promise.all([
+          const [log, p, r, mg] = await Promise.all([
             listNutritionLog(t, { since, until }),
             listPantryItems(t),
             listRecipes(t),
+            getMacroGoals(t),
           ]);
           setEntries(log);
           setPantry(p);
           setRecipes(r);
+          setGoals(mg);
         })
         .catch((err: Error) => {
           if (err.message.toLowerCase().includes("401")) {
@@ -182,6 +190,14 @@ export function TodayView() {
       >
         <MacroSummary totals={totals} entryCount={entries?.length ?? 0} />
 
+        {goals && (
+          <MacroGoalRings
+            totals={totals}
+            goals={goals}
+            onSetGoals={() => setShowGoalsSheet(true)}
+          />
+        )}
+
         <QuickAdd
           pantry={pantry}
           recipes={recipes}
@@ -204,6 +220,18 @@ export function TodayView() {
           />
         )}
       </ScrollView>
+
+      {goals && (
+        <MacroGoalsSheet
+          open={showGoalsSheet}
+          initial={goals}
+          onSaved={(saved) => {
+            setGoals(saved);
+            setShowGoalsSheet(false);
+          }}
+          onClose={() => setShowGoalsSheet(false)}
+        />
+      )}
     </View>
   );
 }
