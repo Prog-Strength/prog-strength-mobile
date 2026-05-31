@@ -1,13 +1,17 @@
-// Bodyweight view inside the Nutrition tab. Add-entry form, trend
-// chart with simple stats (avg / min / max), then history list. The
-// chart and stats are scoped to a time-window selector (7D/30D/90D/All)
-// so the view answers "how am I trending lately" without forcing the
-// user to scroll the full history.
+// Bodyweight view inside the Nutrition tab. Multi-per-day-aware
+// layout: time-range tabs (30/60/90/All), separator, 2×2 stat tiles
+// (avg/min/max/delta), daily-average trend chart with same-day
+// scatter, the log form (unchanged), and a paginated card list
+// replacing the prior flat scrolled history. See
+// prog-strength-docs/sows/bodyweight-multi-per-day.md.
+//
+// Single GET /bodyweight on mount. All filtering / aggregation /
+// pagination happens client-side off the one fetched list.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
+  ScrollView,
   Text,
   TextInput,
   View,
@@ -23,26 +27,20 @@ import {
 import {
   BodyweightChart,
   computeStats,
+  type BodyweightStats,
 } from "@/components/nutrition/bodyweight-chart";
-import { SegmentedControl, type Segment } from "@/components/segmented-control";
 
 type Unit = "lb" | "kg";
 
-type RangeKey = "7d" | "30d" | "90d" | "all";
-
-const RANGE_SEGMENTS: readonly Segment<RangeKey>[] = [
-  { value: "7d", label: "7D" },
-  { value: "30d", label: "30D" },
-  { value: "90d", label: "90D" },
-  { value: "all", label: "All" },
+type RangeKey = "30" | "60" | "90" | "all";
+const RANGES: { key: RangeKey; label: string; days: number | null }[] = [
+  { key: "30", label: "30D", days: 30 },
+  { key: "60", label: "60D", days: 60 },
+  { key: "90", label: "90D", days: 90 },
+  { key: "all", label: "All", days: null },
 ];
 
-const RANGE_DAYS: Record<RangeKey, number | null> = {
-  "7d": 7,
-  "30d": 30,
-  "90d": 90,
-  all: null,
-};
+const PAGE_SIZE = 20;
 
 export function BodyweightView() {
   const router = useRouter();
@@ -53,23 +51,42 @@ export function BodyweightView() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowBusyID, setRowBusyID] = useState<string | null>(null);
-  const [range, setRange] = useState<RangeKey>("30d");
+  const [range, setRange] = useState<RangeKey>("30");
+  const [page, setPage] = useState(1);
 
-  const windowEntries = useMemo(() => {
+  const entriesInRange = useMemo(() => {
     if (!entries) return [];
-    const days = RANGE_DAYS[range];
-    if (days === null) return entries;
-    const cutoff = Date.now() - days * 86_400_000;
-    return entries.filter((e) => {
-      const t = new Date(e.measured_at).getTime();
-      return Number.isFinite(t) && t >= cutoff;
-    });
+    const sorted = [...entries].sort(
+      (a, b) =>
+        new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime(),
+    );
+    const rangeDef = RANGES.find((r) => r.key === range);
+    if (!rangeDef || rangeDef.days === null) return sorted;
+    const cutoffMs = Date.now() - rangeDef.days * 86_400_000;
+    return sorted.filter(
+      (e) => new Date(e.measured_at).getTime() >= cutoffMs,
+    );
   }, [entries, range]);
 
-  const stats = useMemo(
-    () => computeStats(windowEntries, unit),
-    [windowEntries, unit],
+  const stats: BodyweightStats | null = useMemo(
+    () => computeStats(entriesInRange, unit),
+    [entriesInRange, unit],
   );
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(entriesInRange.length / PAGE_SIZE),
+  );
+  const pageEntries = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return entriesInRange.slice(start, start + PAGE_SIZE);
+  }, [entriesInRange, page]);
+
+  // Reset to page 1 when the range changes so the user doesn't land
+  // on an empty page after narrowing the window.
+  useEffect(() => {
+    setPage(1);
+  }, [range]);
 
   const refetch = useCallback(() => {
     setError(null);
@@ -143,141 +160,182 @@ export function BodyweightView() {
   }
 
   return (
-    <FlatList
-      data={entries}
-      keyExtractor={(e) => e.id}
-      contentContainerClassName="gap-2 px-4 pb-8"
-      ListHeaderComponent={
-        <View className="gap-3 pt-1">
-          {error && (
-            <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
-              <Text className="text-xs text-danger">{error}</Text>
-            </View>
-          )}
-          <View className="gap-2 rounded-lg border border-border bg-surface p-3">
-            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-              Log a reading
-            </Text>
-            <View className="flex-row items-center gap-2">
-              <TextInput
-                value={weight}
-                onChangeText={setWeight}
-                placeholder="0"
-                placeholderTextColor="#71717a"
-                keyboardType="decimal-pad"
-                editable={!busy}
-                className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-              />
-              <UnitToggle value={unit} onChange={setUnit} disabled={busy} />
-              <Pressable
-                onPress={handleSubmit}
-                disabled={busy}
-                accessibilityRole="button"
-                className="rounded-md bg-accent px-3 py-1.5 active:opacity-80 disabled:opacity-50"
-              >
-                {busy ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text className="text-xs font-medium text-accent-fg">
-                    Log
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-            {formError && (
-              <Text className="text-xs text-danger">{formError}</Text>
-            )}
-          </View>
-          <View className="gap-3 rounded-lg border border-border bg-surface p-3">
-            <View className="flex-row items-center justify-between gap-2">
-              <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                Trend
-              </Text>
-              <View className="min-w-[180px]">
-                <SegmentedControl
-                  value={range}
-                  onChange={setRange}
-                  segments={RANGE_SEGMENTS}
-                  ariaLabel="Time range"
-                />
-              </View>
-            </View>
-            {stats ? (
-              <>
-                <BodyweightChart entries={windowEntries} unit={unit} />
-                <View className="flex-row gap-2">
-                  <StatTile label="Avg" value={stats.avg} unit={stats.unit} />
-                  <StatTile label="Min" value={stats.min} unit={stats.unit} />
-                  <StatTile label="Max" value={stats.max} unit={stats.unit} />
-                </View>
-              </>
-            ) : (
-              <View className="items-center justify-center py-6">
-                <Text className="text-xs text-muted">
-                  No readings in this range.
-                </Text>
-              </View>
-            )}
-          </View>
-          <Text className="text-lg font-semibold text-foreground">
-            History ({entries.length})
-          </Text>
+    <ScrollView
+      className="flex-1"
+      contentContainerClassName="gap-3 px-4 pb-8 pt-1"
+    >
+      {error && (
+        <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
+          <Text className="text-xs text-danger">{error}</Text>
         </View>
-      }
-      ListEmptyComponent={
+      )}
+
+      <RangeTabs value={range} onChange={setRange} />
+
+      <StatTilesGrid stats={stats} />
+
+      <BodyweightChart entries={entriesInRange} unit={unit} />
+
+      <View className="gap-2 rounded-lg border border-border bg-surface p-3">
+        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          Log a reading
+        </Text>
+        <View className="flex-row items-center gap-2">
+          <TextInput
+            value={weight}
+            onChangeText={setWeight}
+            placeholder="0"
+            placeholderTextColor="#71717a"
+            keyboardType="decimal-pad"
+            editable={!busy}
+            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+          />
+          <UnitToggle value={unit} onChange={setUnit} disabled={busy} />
+          <Pressable
+            onPress={handleSubmit}
+            disabled={busy}
+            accessibilityRole="button"
+            className="rounded-md bg-accent px-3 py-1.5 active:opacity-80 disabled:opacity-50"
+          >
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-xs font-medium text-accent-fg">Log</Text>
+            )}
+          </Pressable>
+        </View>
+        {formError && (
+          <Text className="text-xs text-danger">{formError}</Text>
+        )}
+      </View>
+
+      <Text className="mt-1 text-sm font-semibold text-foreground">
+        Entries
+      </Text>
+
+      {entriesInRange.length === 0 ? (
         <View className="rounded-lg border border-border bg-surface px-4 py-8">
           <Text className="text-center text-sm text-muted">
-            No bodyweight readings yet.
+            {entries.length === 0
+              ? "No bodyweight readings yet."
+              : "No readings in this range — try widening the time range above."}
           </Text>
         </View>
-      }
-      renderItem={({ item, index }) => {
-        const prev = entries[index + 1];
-        const delta =
-          prev && prev.unit === item.unit ? item.weight - prev.weight : null;
-        return (
-          <View className="flex-row items-center justify-between rounded-lg border border-border bg-surface p-3">
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-foreground tabular-nums">
-                {formatNumber(item.weight)} {item.unit}
-                {delta !== null && (
-                  <Text
-                    className={`text-xs ${
-                      delta > 0
-                        ? "text-danger"
-                        : delta < 0
-                          ? "text-accent"
-                          : "text-muted"
-                    }`}
-                  >
-                    {"  "}
-                    {delta > 0 ? "+" : ""}
-                    {formatNumber(delta)}
-                  </Text>
-                )}
-              </Text>
-              <Text className="mt-0.5 text-xs text-muted">
-                {formatLocalDateTime(item.measured_at)}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => handleDelete(item.id)}
-              disabled={rowBusyID === item.id}
-              accessibilityRole="button"
-              accessibilityLabel="Delete reading"
-              hitSlop={8}
-              className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
-            >
-              {rowBusyID === item.id ? (
-                <ActivityIndicator color="#ef4444" />
-              ) : (
-                <Text className="text-xs text-danger">Delete</Text>
-              )}
-            </Pressable>
+      ) : (
+        <>
+          <View className="gap-2">
+            {pageEntries.map((e) => (
+              <EntryCard
+                key={e.id}
+                entry={e}
+                busy={rowBusyID === e.id}
+                onDelete={() => handleDelete(e.id)}
+              />
+            ))}
           </View>
+          {totalPages > 1 && (
+            <Pagination
+              page={page}
+              totalPages={totalPages}
+              totalCount={entriesInRange.length}
+              onPageChange={setPage}
+            />
+          )}
+        </>
+      )}
+    </ScrollView>
+  );
+}
+
+// --- Range tabs --------------------------------------------------
+
+function RangeTabs({
+  value,
+  onChange,
+}: {
+  value: RangeKey;
+  onChange: (v: RangeKey) => void;
+}) {
+  // Border-b on the parent doubles as the SOW's "white separator"
+  // between toolbar and content — same pattern the web side uses.
+  return (
+    <View className="flex-row items-center gap-2 border-b border-border pb-3">
+      {RANGES.map((r) => {
+        const selected = r.key === value;
+        const bgClass = selected
+          ? "bg-accent"
+          : "bg-surface border border-border";
+        const textClass = selected
+          ? "text-accent-fg"
+          : "text-foreground";
+        return (
+          <Pressable
+            key={r.key}
+            onPress={() => onChange(r.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            // translate-y-px on the selected tab gives the
+            // "pressed in" feel the SOW asked for. The web side
+            // adds an inset shadow too; on RN inset shadows aren't
+            // a thing without third-party deps, so the translate +
+            // accent fill is the visual stand-in.
+            style={selected ? { transform: [{ translateY: 1 }] } : undefined}
+            className={`rounded-md px-3 py-1.5 ${bgClass} active:opacity-80`}
+          >
+            <Text className={`text-xs font-medium ${textClass}`}>
+              {r.label}
+            </Text>
+          </Pressable>
         );
-      }}
-    />
+      })}
+    </View>
+  );
+}
+
+// --- Stat tile 2x2 grid -------------------------------------------
+
+function StatTilesGrid({ stats }: { stats: BodyweightStats | null }) {
+  // 2×2 grid (not 4-wide) so each tile gets enough phone-width room
+  // for the larger number + sublabel to read cleanly.
+  return (
+    <View className="flex-row flex-wrap gap-2">
+      <StatTile
+        label="Avg"
+        value={stats ? formatNumber(stats.avg) : "—"}
+        unit={stats?.unit}
+        sublabel={
+          stats
+            ? `${stats.count} reading${stats.count === 1 ? "" : "s"}`
+            : "No data"
+        }
+      />
+      <StatTile
+        label="Min"
+        value={stats ? formatNumber(stats.min) : "—"}
+        unit={stats?.unit}
+        sublabel="In range"
+      />
+      <StatTile
+        label="Max"
+        value={stats ? formatNumber(stats.max) : "—"}
+        unit={stats?.unit}
+        sublabel="In range"
+      />
+      <StatTile
+        label="Delta"
+        value={
+          stats && stats.delta !== null
+            ? `${stats.delta >= 0 ? "+" : ""}${formatNumber(stats.delta)}`
+            : "—"
+        }
+        unit={stats?.unit}
+        sublabel={
+          stats && stats.deltaPercent !== null
+            ? `${stats.deltaPercent >= 0 ? "+" : ""}${formatNumber(stats.deltaPercent)}%`
+            : "Need 2+ days"
+        }
+      />
+    </View>
   );
 }
 
@@ -285,23 +343,125 @@ function StatTile({
   label,
   value,
   unit,
+  sublabel,
 }: {
   label: string;
-  value: number;
-  unit: Unit;
+  value: string;
+  unit?: Unit;
+  sublabel: string;
 }) {
   return (
-    <View className="flex-1 rounded-md border border-border bg-background p-2">
-      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+    <View className="min-w-[45%] flex-1 rounded-lg border border-border bg-surface p-3">
+      <Text className="text-lg font-semibold tabular-nums text-foreground">
+        {value}
+        {unit && (
+          <Text className="text-sm font-normal text-muted"> {unit}</Text>
+        )}
+      </Text>
+      <Text className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
         {label}
       </Text>
-      <Text className="mt-0.5 text-sm font-semibold text-foreground tabular-nums">
-        {formatNumber(value)}{" "}
-        <Text className="text-xs font-normal text-muted">{unit}</Text>
-      </Text>
+      <Text className="mt-0.5 text-[10px] text-muted">{sublabel}</Text>
     </View>
   );
 }
+
+// --- Entry card --------------------------------------------------
+
+function EntryCard({
+  entry,
+  busy,
+  onDelete,
+}: {
+  entry: BodyweightEntry;
+  busy: boolean;
+  onDelete: () => void;
+}) {
+  return (
+    <View className="flex-row items-center justify-between rounded-lg border border-border bg-surface p-3">
+      <View className="flex-1">
+        <Text className="text-sm font-medium text-foreground tabular-nums">
+          {formatNumber(entry.weight)}{" "}
+          <Text className="text-xs font-normal text-muted">{entry.unit}</Text>
+        </Text>
+        <Text className="mt-0.5 text-xs text-muted">
+          {formatLocalDateTime(entry.measured_at)}
+        </Text>
+      </View>
+      <Pressable
+        onPress={onDelete}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel="Delete reading"
+        hitSlop={8}
+        className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
+      >
+        {busy ? (
+          <ActivityIndicator color="#ef4444" />
+        ) : (
+          <Text className="text-xs text-danger">Delete</Text>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+// --- Pagination --------------------------------------------------
+
+function Pagination({
+  page,
+  totalPages,
+  totalCount,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  totalCount: number;
+  onPageChange: (p: number) => void;
+}) {
+  return (
+    <View className="mt-1 flex-row items-center justify-between rounded-md border border-border bg-surface px-3 py-2">
+      <Text className="text-xs tabular-nums text-muted">
+        Page {page}/{totalPages} · {totalCount} total
+      </Text>
+      <View className="flex-row gap-1">
+        <PageBtn
+          label="‹"
+          disabled={page === 1}
+          onPress={() => onPageChange(page - 1)}
+        />
+        <PageBtn
+          label="›"
+          disabled={page === totalPages}
+          onPress={() => onPageChange(page + 1)}
+        />
+      </View>
+    </View>
+  );
+}
+
+function PageBtn({
+  label,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      className="h-7 w-7 items-center justify-center rounded-md border border-border bg-background active:opacity-80 disabled:opacity-30"
+    >
+      <Text className="text-sm font-semibold text-foreground">{label}</Text>
+    </Pressable>
+  );
+}
+
+// --- Unit toggle (unchanged) -------------------------------------
 
 function UnitToggle({
   value,
@@ -340,6 +500,8 @@ function UnitToggle({
     </View>
   );
 }
+
+// --- helpers -----------------------------------------------------
 
 function formatNumber(v: number): string {
   if (!Number.isFinite(v)) return "—";

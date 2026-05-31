@@ -1,11 +1,12 @@
-// Hand-rolled SVG line chart for the Bodyweight view. Pattern mirrors
+// Hand-rolled SVG chart for the Bodyweight view. Pattern mirrors
 // components/progress/progression-chart.tsx so the two trend visuals
 // feel coherent — no extra charting dep, math fits in one file.
 //
-// The view passes in already-filtered entries (a time window) and the
-// display unit. We convert any rows logged in the other unit so the
-// line stays continuous when a user switched their preferred unit
-// part-way through their history.
+// As of the multi-per-day rebuild: the line traces the *daily
+// average*, not the raw scatter. Raw measurements still render as
+// dots (lower opacity) so the morning + evening spread on a single
+// day is visible context for the trend line rather than competing
+// with it. See prog-strength-docs/sows/bodyweight-multi-per-day.md.
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Svg, {
@@ -23,10 +24,10 @@ const PADDING_RIGHT = 12;
 const PADDING_TOP = 12;
 const PADDING_BOTTOM = 22;
 const DOT_RADIUS = 3;
+const RAW_DOT_RADIUS = 2.5;
 
 const COLOR_GRID = "#27272a";
 const COLOR_AXIS = "#a1a1aa";
-const COLOR_AVG = "#71717a";
 const COLOR_LINE = "#3b82f6";
 const COLOR_BG = "#18181b";
 
@@ -44,6 +45,12 @@ export type BodyweightStats = {
   avg: number;
   min: number;
   max: number;
+  // Delta uses first-day-average vs last-day-average rather than
+  // first-vs-last raw reading — matches the chart's trend line and
+  // isn't pulled around by a single bad scale read at either endpoint.
+  // null when the window has fewer than 2 distinct days.
+  delta: number | null;
+  deltaPercent: number | null;
   unit: Unit;
 };
 
@@ -52,15 +59,46 @@ export function computeStats(
   unit: Unit,
 ): BodyweightStats | null {
   if (entries.length === 0) return null;
-  const values = entries.map((e) => convertWeight(e.weight, e.unit, unit));
-  const sum = values.reduce((a, b) => a + b, 0);
-  return {
-    count: values.length,
-    avg: sum / values.length,
-    min: Math.min(...values),
-    max: Math.max(...values),
-    unit,
-  };
+  const values = entries.map((e) => ({
+    v: convertWeight(e.weight, e.unit, unit),
+    t: new Date(e.measured_at).getTime(),
+  }));
+  const sum = values.reduce((a, b) => a + b.v, 0);
+  const avg = sum / values.length;
+  const min = Math.min(...values.map((x) => x.v));
+  const max = Math.max(...values.map((x) => x.v));
+
+  // Group by local-day, mean within day, compare first vs last day.
+  const byDay = new Map<number, number[]>();
+  for (const x of values) {
+    const d = new Date(x.t);
+    const dayStart = new Date(
+      d.getFullYear(),
+      d.getMonth(),
+      d.getDate(),
+    ).getTime();
+    const arr = byDay.get(dayStart) ?? [];
+    arr.push(x.v);
+    byDay.set(dayStart, arr);
+  }
+  const dayStartTimes = [...byDay.keys()].sort((a, b) => a - b);
+  let delta: number | null = null;
+  let deltaPercent: number | null = null;
+  if (dayStartTimes.length >= 2) {
+    const firstAvg = mean(byDay.get(dayStartTimes[0]) ?? []);
+    const lastAvg = mean(
+      byDay.get(dayStartTimes[dayStartTimes.length - 1]) ?? [],
+    );
+    delta = lastAvg - firstAvg;
+    deltaPercent = firstAvg > 0 ? (delta / firstAvg) * 100 : null;
+  }
+
+  return { count: values.length, avg, min, max, delta, deltaPercent, unit };
+}
+
+function mean(xs: number[]): number {
+  if (xs.length === 0) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
 export function BodyweightChart({
@@ -74,8 +112,8 @@ export function BodyweightChart({
 }) {
   const [width, setWidth] = useState(0);
 
-  // Oldest → newest, weights normalized to the display unit.
-  const points = useMemo(() => {
+  // Raw points (every measurement) in chronological order.
+  const rawPoints = useMemo(() => {
     return entries
       .map((e) => ({
         t: new Date(e.measured_at).getTime(),
@@ -85,32 +123,51 @@ export function BodyweightChart({
       .sort((a, b) => a.t - b.t);
   }, [entries, unit]);
 
+  // Daily averages: group by local-day, mean within day, plot at noon
+  // of that day so the line sits visually centered through the
+  // morning + evening scatter points.
+  const avgPoints = useMemo(() => {
+    if (rawPoints.length === 0) return [] as { t: number; v: number }[];
+    const byDay = new Map<number, number[]>();
+    for (const p of rawPoints) {
+      const d = new Date(p.t);
+      const dayStart = new Date(
+        d.getFullYear(),
+        d.getMonth(),
+        d.getDate(),
+      ).getTime();
+      const arr = byDay.get(dayStart) ?? [];
+      arr.push(p.v);
+      byDay.set(dayStart, arr);
+    }
+    const result: { t: number; v: number }[] = [];
+    for (const [dayStart, weights] of byDay) {
+      const m = weights.reduce((a, b) => a + b, 0) / weights.length;
+      result.push({ t: dayStart + 12 * 60 * 60 * 1000, v: m });
+    }
+    return result.sort((a, b) => a.t - b.t);
+  }, [rawPoints]);
+
   const xDomain = useMemo<[number, number] | null>(() => {
-    if (points.length === 0) return null;
-    const min = points[0].t;
-    const max = points[points.length - 1].t;
+    if (rawPoints.length === 0) return null;
+    const min = rawPoints[0].t;
+    const max = rawPoints[rawPoints.length - 1].t;
     if (min === max) return [min - 86_400_000, max + 86_400_000];
     return [min, max];
-  }, [points]);
+  }, [rawPoints]);
 
   const yDomain = useMemo<[number, number] | null>(() => {
-    if (points.length === 0) return null;
-    const vals = points.map((p) => p.v);
+    if (rawPoints.length === 0) return null;
+    const vals = rawPoints.map((p) => p.v);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     if (min === max) {
-      // All readings identical — pad so the line sits mid-chart.
       const pad = Math.max(1, min * 0.02);
       return [min - pad, max + pad];
     }
     const pad = (max - min) * 0.2;
     return [min - pad, max + pad];
-  }, [points]);
-
-  const avg = useMemo(() => {
-    if (points.length === 0) return null;
-    return points.reduce((s, p) => s + p.v, 0) / points.length;
-  }, [points]);
+  }, [rawPoints]);
 
   if (width === 0) {
     return (
@@ -120,7 +177,7 @@ export function BodyweightChart({
       />
     );
   }
-  if (xDomain === null || yDomain === null || avg === null) return null;
+  if (xDomain === null || yDomain === null) return null;
 
   const plotW = width - PADDING_LEFT - PADDING_RIGHT;
   const plotH = height - PADDING_TOP - PADDING_BOTTOM;
@@ -133,10 +190,11 @@ export function BodyweightChart({
     PADDING_TOP + (1 - (v - yMin) / (yMax - yMin)) * plotH;
 
   const yTicks = niceYTicks(yMin, yMax, 4);
-  const xTicks = niceXTicks(xMin, xMax, Math.min(3, points.length));
+  const xTicks = niceXTicks(xMin, xMax, Math.min(3, rawPoints.length));
 
-  const polyPoints = points.map((p) => `${xScale(p.t)},${yScale(p.v)}`).join(" ");
-  const avgY = yScale(avg);
+  const avgPoly = avgPoints
+    .map((p) => `${xScale(p.t)},${yScale(p.v)}`)
+    .join(" ");
 
   return (
     <View
@@ -185,29 +243,31 @@ export function BodyweightChart({
           </SvgText>
         ))}
 
-        {/* Average reference line */}
-        <Line
-          x1={PADDING_LEFT}
-          y1={avgY}
-          x2={width - PADDING_RIGHT}
-          y2={avgY}
-          stroke={COLOR_AVG}
-          strokeWidth={1}
-          strokeDasharray="4 4"
-        />
+        {/* Raw measurements — every entry as a faint dot so same-day
+            spread reads as context for the trend line, not noise. */}
+        {rawPoints.map((p, i) => (
+          <Circle
+            key={`r-${i}`}
+            cx={xScale(p.t)}
+            cy={yScale(p.v)}
+            r={RAW_DOT_RADIUS}
+            fill={COLOR_LINE}
+            fillOpacity={0.35}
+          />
+        ))}
 
-        {/* Weight line + dots */}
-        {points.length > 1 && (
+        {/* Daily-average trend line + dots */}
+        {avgPoints.length > 1 && (
           <Polyline
-            points={polyPoints}
+            points={avgPoly}
             fill="none"
             stroke={COLOR_LINE}
             strokeWidth={2}
           />
         )}
-        {points.map((p, i) => (
+        {avgPoints.map((p, i) => (
           <Circle
-            key={`p-${i}`}
+            key={`a-${i}`}
             cx={xScale(p.t)}
             cy={yScale(p.v)}
             r={DOT_RADIUS}
@@ -224,7 +284,6 @@ export function BodyweightChart({
 function niceYTicks(min: number, max: number, count: number): number[] {
   if (max <= min) return [min];
   const rawStep = (max - min) / (count - 1);
-  // Snap to a 1 / 2 / 5 × 10^n step so the labels read clean.
   const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
   const norm = rawStep / mag;
   const snap = norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10;
