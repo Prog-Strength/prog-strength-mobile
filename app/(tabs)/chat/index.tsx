@@ -26,9 +26,10 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Markdown from "react-native-markdown-display";
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
+import { config } from "@/lib/config";
 import { streamChat } from "@/lib/stream";
 import {
   appendChatTurn,
@@ -37,7 +38,7 @@ import {
   patchChatSessionTitle,
   type ChatMessage as PersistedChatMessage,
 } from "@/lib/api";
-import { generateChatSpeech, generateChatTitle } from "@/lib/agent";
+import { generateChatTitle } from "@/lib/agent";
 import {
   ensureSpeechPermissions,
   isSpeechRecognitionAvailable,
@@ -122,6 +123,16 @@ export default function ChatScreen() {
   // doesn't play over the next reply.
   const playbackPlayerRef = useRef<AudioPlayer | null>(null);
   const playbackUriRef = useRef<string | null>(null);
+  // Pending audio-chunk file URIs queued from audio_chunk SSE events
+  // but not yet played. drainAudioQueue pops the head, creates a
+  // player, plays it, and chains onto the next on didJustFinish.
+  // Cleared by stopPlayback on new turn / voice toggle off / unmount.
+  const audioQueueRef = useRef<string[]>([]);
+  // Captures Date.now() when send() fires so the first audio_chunk
+  // that plays can compute end-to-end TTFA. Reset per turn.
+  const turnStartMsRef = useRef<number>(0);
+  // Guards the TTFA telemetry POST so we only report once per turn.
+  const firstAudioReportedRef = useRef<boolean>(false);
 
   // Bootstrap the session on every mount. Two paths:
   //   - URL has ?session=<id>: GET to rehydrate (history + persisted
@@ -191,8 +202,11 @@ export default function ChatScreen() {
   const stopPlayback = useCallback(() => {
     const player = playbackPlayerRef.current;
     const uri = playbackUriRef.current;
+    const queued = audioQueueRef.current;
     playbackPlayerRef.current = null;
     playbackUriRef.current = null;
+    audioQueueRef.current = [];
+    firstAudioReportedRef.current = false;
     if (player) {
       try {
         player.remove();
@@ -209,7 +223,102 @@ export default function ChatScreen() {
         // low-storage anyway
       }
     }
+    // Delete the queued-but-not-yet-played chunk files so the
+    // cache directory doesn't accumulate orphaned mp3s across
+    // interrupted turns.
+    for (const queuedUri of queued) {
+      try {
+        new File(queuedUri).delete();
+      } catch {
+        // best-effort
+      }
+    }
   }, []);
+
+  // Pop the head of audioQueueRef, create a player, play it; on
+  // didJustFinish chain onto the next chunk. Idempotent — early-
+  // returns when something is already playing so back-to-back
+  // audio_chunk events can both call drainAudioQueue safely. First
+  // audio in a turn fires the TTFA telemetry POST exactly once
+  // (guarded by firstAudioReportedRef).
+  const drainAudioQueue = useCallback(async () => {
+    if (playbackPlayerRef.current) return;
+    const uri = audioQueueRef.current.shift();
+    if (!uri) return;
+    if (!AUDIO_PLAYBACK_SUPPORTED) {
+      // expo-audio native module missing — drop the file and
+      // continue to the next chunk silently.
+      try {
+        new File(uri).delete();
+      } catch {
+        // best-effort
+      }
+      void drainAudioQueue();
+      return;
+    }
+    const player = createPlayer(uri);
+    if (!player) {
+      try {
+        new File(uri).delete();
+      } catch {
+        // best-effort
+      }
+      void drainAudioQueue();
+      return;
+    }
+    playbackPlayerRef.current = player;
+    playbackUriRef.current = uri;
+
+    // Fire TTFA telemetry on the first chunk that actually plays.
+    if (!firstAudioReportedRef.current && turnStartMsRef.current > 0) {
+      firstAudioReportedRef.current = true;
+      const ttfaMs = Date.now() - turnStartMsRef.current;
+      void (async () => {
+        const t = await getToken();
+        if (!t) return;
+        try {
+          await fetch(`${config.agentUrl}/telemetry/voice`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${t}`,
+            },
+            body: JSON.stringify({
+              session_id: sessionId,
+              time_to_first_audio_ms: ttfaMs,
+            }),
+          });
+        } catch {
+          // Swallow — telemetry failure is invisible to users.
+        }
+      })();
+    }
+
+    player.addListener("playbackStatusUpdate", (status) => {
+      if (!status.isLoaded) return;
+      if (status.didJustFinish) {
+        try {
+          player.remove();
+        } catch {
+          // already released
+        }
+        if (playbackUriRef.current === uri) {
+          try {
+            new File(uri).delete();
+          } catch {
+            // best-effort
+          }
+          playbackUriRef.current = null;
+        }
+        if (playbackPlayerRef.current === player) {
+          playbackPlayerRef.current = null;
+        }
+        // Advance to the next queued chunk, if any.
+        void drainAudioQueue();
+      }
+    });
+    player.play();
+  }, [sessionId]);
 
   // Push-to-talk: onPressIn starts a recognition session,
   // onPressOut stops it. The recognizer fills the composer's
@@ -323,6 +432,12 @@ export default function ChatScreen() {
     setInput("");
     setStreaming(true);
 
+    // Cancel any audio queue / playback left over from a prior turn
+    // and capture the turn-start timestamp so the first audio_chunk
+    // that arrives can compute TTFA against it.
+    stopPlayback();
+    turnStartMsRef.current = Date.now();
+
     // Track whether this is the first turn of the session so we
     // know to fire title generation after the append. Pre-append
     // messages.length === 0 is the "first" signal.
@@ -344,6 +459,12 @@ export default function ChatScreen() {
         // string is bogus, so older clients without this field
         // continue to work.
         client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        // When true, the agent's voice_streamer wraps the SSE
+        // stream with per-sentence audio_chunk events. The handler
+        // below decodes each chunk's base64 mp3 to a temp file and
+        // queues it for playback. See
+        // prog-strength-docs/sows/streaming-tts.md.
+        voice_mode: voiceMode,
       })) {
         if (ev.type === "text_delta") {
           assistantText += ev.text;
@@ -383,6 +504,26 @@ export default function ChatScreen() {
           setMessages((prev) =>
             replaceLast(prev, (last) => ({ ...last, model: ev.model })),
           );
+        } else if (ev.type === "audio_chunk") {
+          // Decode the base64 mp3 to a temp file in the cache dir
+          // and push the URI into the playback queue. expo-audio
+          // can't play in-memory buffers — needs a URI — so each
+          // chunk lands on disk briefly, gets played, then deleted
+          // in the didJustFinish handler inside drainAudioQueue.
+          try {
+            const bytes = base64ToBytes(ev.mp3_base64);
+            const file = new File(
+              Paths.cache,
+              `chat-chunk-${sessionId}-${ev.index}.mp3`,
+            );
+            file.write(bytes);
+            audioQueueRef.current.push(file.uri);
+            void drainAudioQueue();
+          } catch (err) {
+            // A single chunk failing to decode/write shouldn't kill
+            // the rest of the turn — log and continue.
+            console.warn("voice: audio_chunk write failed", err);
+          }
         } else if (ev.type === "error") {
           setError(ev.message);
         }
@@ -416,18 +557,12 @@ export default function ChatScreen() {
           void titleAndPatch(token, sessionId, trimmed, assistantText);
         }
 
-        if (voiceMode) {
-          // Background TTS playback. Same fire-and-forget shape as
-          // the title flow. /speak failures (503 if OPENAI_API_KEY
-          // unset, 429 if quota exhausted) silently drop to text-
-          // only for the turn — voice is enhancement, not core.
-          void speakAndPlay(
-            token,
-            assistantText,
-            playbackPlayerRef,
-            playbackUriRef,
-          );
-        }
+        // Voice playback (when voiceMode is on) now rides on the
+        // SSE stream itself via audio_chunk events handled inline
+        // above — no post-stream /speak roundtrip. The streaming-tts
+        // SOW switched us from one-mp3-per-turn to one-mp3-per-
+        // sentence so first audio starts within ~1-2s of send
+        // instead of ~5-12s.
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -449,6 +584,8 @@ export default function ChatScreen() {
     loading,
     streaming,
     voiceMode,
+    stopPlayback,
+    drainAudioQueue,
   ]);
 
   const startNewChat = () => {
@@ -662,105 +799,6 @@ function fallbackTitle(userText: string): string {
   if (!trimmed) return "New Chat";
   return trimmed.slice(0, 60).trim() || "New Chat";
 }
-
-/**
- * Fetch the spoken version of `text` from the agent's /speak endpoint,
- * load it as an expo-av Sound, and start playback. Tears down any
- * in-flight Sound + temp file first so a slow first turn + fast
- * second one don't stack two simultaneous playbacks.
- *
- * Failures are logged and swallowed — voice playback is enhancement;
- * an inline error would punish the user for a transient server
- * blip that doesn't affect the text they already see.
- */
-async function speakAndPlay(
-  token: string,
-  text: string,
-  playerRef: React.MutableRefObject<AudioPlayer | null>,
-  uriRef: React.MutableRefObject<string | null>,
-): Promise<void> {
-  // Tear down any in-flight playback first. .remove() releases the
-  // native handle; without it back-to-back turns would stack two
-  // simultaneous players.
-  const prevPlayer = playerRef.current;
-  const prevUri = uriRef.current;
-  playerRef.current = null;
-  uriRef.current = null;
-  if (prevPlayer) {
-    try {
-      prevPlayer.remove();
-    } catch {
-      // already released
-    }
-  }
-  if (prevUri) {
-    try {
-      new File(prevUri).delete();
-    } catch {
-      // best-effort
-    }
-  }
-
-  let uri: string;
-  try {
-    uri = await generateChatSpeech(token, text);
-  } catch (err) {
-    console.warn("voice mode: /speak failed", err);
-    return;
-  }
-  uriRef.current = uri;
-  try {
-    const player = createPlayer(uri);
-    if (!player) {
-      // expo-audio native module missing — defensive guard kicked
-      // in. Voice mode shouldn't have been toggleable in that
-      // state, but if the user got here anyway, silently drop
-      // the file and move on.
-      try {
-        new File(uri).delete();
-      } catch {
-        // best-effort
-      }
-      if (uriRef.current === uri) uriRef.current = null;
-      return;
-    }
-    playerRef.current = player;
-    player.addListener("playbackStatusUpdate", (status) => {
-      if (!status.isLoaded) return;
-      if (status.didJustFinish) {
-        // Natural end: release the player + delete the temp file.
-        // The refs may already point at a newer turn's playback by
-        // the time this fires; only clear them if they still match.
-        try {
-          player.remove();
-        } catch {
-          // already released
-        }
-        if (uriRef.current === uri) {
-          try {
-            new File(uri).delete();
-          } catch {
-            // best-effort
-          }
-          uriRef.current = null;
-        }
-        if (playerRef.current === player) {
-          playerRef.current = null;
-        }
-      }
-    });
-    player.play();
-  } catch (err) {
-    console.warn("voice mode: audio playback failed", err);
-    try {
-      new File(uri).delete();
-    } catch {
-      // best-effort
-    }
-    if (uriRef.current === uri) uriRef.current = null;
-  }
-}
-
 /**
  * Persisted-message → UI-message converter. The API stores message
  * content as a plain string + optional model + optional tools JSON.
@@ -1013,4 +1051,15 @@ function replaceLast<T>(arr: T[], fn: (last: T) => T): T[] {
   const next = arr.slice(0, -1);
   next.push(fn(arr[arr.length - 1]));
   return next;
+}
+
+/**
+ * Decode a base64-encoded mp3 payload (as carried on the audio_chunk
+ * SSE event) into a Uint8Array suitable for expo-file-system's
+ * File.write(). atob is available globally in Hermes/RN 0.83+; the
+ * map-from-string pattern mirrors what the web client does so the
+ * two stay byte-for-byte consistent.
+ */
+function base64ToBytes(b64: string): Uint8Array {
+  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
