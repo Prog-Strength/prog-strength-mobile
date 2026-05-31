@@ -1,8 +1,9 @@
-// Chat screen. Mirrors prog-strength-web's /chat in shape but skips
-// markdown rendering for v1 — agent responses are shown as plain text.
-// Adding rich rendering later means swapping <Text>{content}</Text>
-// for a Markdown component (react-native-markdown-display is the
-// usual pick); the streaming + state machinery stays identical.
+// Chat screen. Mirrors prog-strength-web's /chat in shape, including
+// markdown rendering — assistant turns route through
+// react-native-markdown-display so `**bold**`, lists, code, and
+// tables come out formatted instead of as literal asterisks. User
+// turns stay plain Text (users don't intentionally write markdown
+// when typing into a chat composer).
 //
 // Sessions persist on the API per the persistent-chat-sessions SOW:
 // on mount we either resume a session referenced by ?session=<id> or
@@ -24,6 +25,7 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
+import Markdown from "react-native-markdown-display";
 import { clearToken, getToken } from "@/lib/auth";
 import { streamChat } from "@/lib/stream";
 import {
@@ -485,14 +487,24 @@ function MessageBubble({
     >
       {showTyping ? (
         <Text className="text-sm italic text-muted">…</Text>
-      ) : message.content.length > 0 ? (
-        <Text
-          selectable
-          className={`text-sm ${isUser ? "text-accent-fg" : "text-foreground"}`}
-        >
+      ) : message.content.length === 0 ? null : isUser ? (
+        // User messages: plain Text. Users don't intentionally write
+        // markdown when typing into a chat composer; rendering it as
+        // such would let stray asterisks/underscores reshape what
+        // they wrote.
+        <Text selectable className="text-sm text-accent-fg">
           {message.content}
         </Text>
-      ) : null}
+      ) : (
+        // Assistant messages route through react-native-markdown-
+        // display so the agent's `**bold**`, lists, code blocks,
+        // links, and tables actually render. Style overrides target
+        // each element type — the library uses inline styles (not
+        // NativeWind classNames), so the dark-theme colors are
+        // duplicated from tailwind.config.js. Keep these in sync if
+        // the theme ever changes.
+        <Markdown style={MARKDOWN_STYLES}>{message.content}</Markdown>
+      )}
 
       {message.tools && message.tools.length > 0 && (
         <View className="mt-2 gap-1">
@@ -523,6 +535,144 @@ function MessageBubble({
     </View>
   );
 }
+
+// Per-element styles for react-native-markdown-display inside the
+// assistant bubble. Hex values mirror tailwind.config.js — the
+// library doesn't speak NativeWind, so the dark palette has to be
+// duplicated here. Pulled out of the component so it's a stable
+// reference (the library re-mounts on every render if a new style
+// object is passed inline).
+//
+// Layout-wise: tight vertical rhythm because the chat bubble has
+// its own padding; first/last child margin resets keep the bubble
+// edges flush with the text. Bullets and numbered list markers
+// stay muted so the content reads first.
+const MARKDOWN_STYLES = {
+  body: {
+    color: "#fafafa",
+    fontSize: 14,
+  },
+  paragraph: {
+    marginTop: 0,
+    marginBottom: 6,
+  },
+  strong: {
+    fontWeight: "600" as const,
+    color: "#fafafa",
+  },
+  em: {
+    fontStyle: "italic" as const,
+  },
+  // Bullet + ordered lists. The library renders markers via
+  // bullet_list_icon / ordered_list_icon; we mute them so they don't
+  // out-shout the text.
+  bullet_list: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  ordered_list: {
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  bullet_list_icon: {
+    color: "#a1a1aa",
+    marginRight: 6,
+  },
+  ordered_list_icon: {
+    color: "#a1a1aa",
+    marginRight: 6,
+  },
+  list_item: {
+    marginVertical: 1,
+  },
+  // Headings. Claude uses them as section labels inside a single
+  // turn; cap the sizes so they don't dominate the bubble.
+  heading1: {
+    fontSize: 16,
+    fontWeight: "600" as const,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  heading2: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  heading3: {
+    fontSize: 14,
+    fontWeight: "600" as const,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  // Inline code + fenced blocks. The surface-2 hex is one step
+  // brighter than the bubble's surface so code blocks read as
+  // distinct cards.
+  code_inline: {
+    backgroundColor: "#27272a",
+    color: "#fafafa",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+    fontSize: 12,
+    fontFamily: "Menlo",
+  },
+  code_block: {
+    backgroundColor: "#27272a",
+    color: "#fafafa",
+    padding: 10,
+    borderRadius: 6,
+    fontSize: 12,
+    fontFamily: "Menlo",
+    marginVertical: 6,
+  },
+  fence: {
+    backgroundColor: "#27272a",
+    color: "#fafafa",
+    padding: 10,
+    borderRadius: 6,
+    fontSize: 12,
+    fontFamily: "Menlo",
+    marginVertical: 6,
+  },
+  link: {
+    color: "#3b82f6",
+    textDecorationLine: "underline" as const,
+  },
+  blockquote: {
+    backgroundColor: "transparent",
+    borderLeftWidth: 2,
+    borderLeftColor: "#27272a",
+    paddingLeft: 10,
+    marginVertical: 6,
+  },
+  // GFM tables — Claude uses these often for set/rep summaries.
+  // Horizontal scroll isn't built-in; long tables will wrap text
+  // inside cells, which is acceptable at single-user beta scale.
+  table: {
+    borderWidth: 1,
+    borderColor: "#27272a",
+    borderRadius: 4,
+    marginVertical: 6,
+  },
+  thead: {
+    backgroundColor: "#27272a",
+  },
+  th: {
+    padding: 6,
+    fontWeight: "600" as const,
+  },
+  td: {
+    padding: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#27272a",
+  },
+  hr: {
+    backgroundColor: "#27272a",
+    height: 1,
+    marginVertical: 8,
+  },
+};
 
 function modelLabel(id: string): string {
   // Strip the leading "claude-" so the label fits on small screens —
