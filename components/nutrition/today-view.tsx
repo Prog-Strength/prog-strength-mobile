@@ -149,13 +149,18 @@ export function TodayView() {
       .finally(() => setLogBusy(false));
   }
 
-  function handleDelete(id: string) {
-    setRowBusyID(id);
+  function handleDelete(ids: string[]) {
+    if (ids.length === 0) return;
+    const groupKey = ids.join(",");
+    setRowBusyID(groupKey);
     Promise.resolve(getToken())
       .then(async (t) => {
         if (!t) return;
-        await deleteNutritionLogEntry(t, id);
-        setEntries((prev) => (prev ? prev.filter((e) => e.id !== id) : prev));
+        await Promise.all(ids.map((id) => deleteNutritionLogEntry(t, id)));
+        const removed = new Set(ids);
+        setEntries((prev) =>
+          prev ? prev.filter((e) => !removed.has(e.id)) : prev,
+        );
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setRowBusyID(null));
@@ -576,7 +581,7 @@ function MealSections({
   pantryByID: Map<string, PantryItem>;
   recipeByID: Map<string, Recipe>;
   rowBusyID: string | null;
-  onDelete: (id: string) => void;
+  onDelete: (ids: string[]) => void;
 }) {
   const byMeal = useMemo(() => {
     const m: Record<MealType, NutritionLogEntry[]> = {
@@ -617,6 +622,18 @@ function MealSections({
   );
 }
 
+type EntryGroup = {
+  key: string;
+  name: string;
+  isRecipe: boolean;
+  quantity: number;
+  calories: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  entryIDs: string[];
+};
+
 function MealSection({
   meal,
   entries,
@@ -630,8 +647,52 @@ function MealSection({
   pantryByID: Map<string, PantryItem>;
   recipeByID: Map<string, Recipe>;
   rowBusyID: string | null;
-  onDelete: (id: string) => void;
+  onDelete: (ids: string[]) => void;
 }) {
+  // Collapse multiple logs of the same pantry item / recipe inside a
+  // single meal into one row so a snack of "Apple × 3" reads as one
+  // line instead of three duplicates. Quantity and macros sum across
+  // the group.
+  const groups = useMemo<EntryGroup[]>(() => {
+    const map = new Map<string, EntryGroup>();
+    const order: string[] = [];
+    for (const e of entries) {
+      const name = e.pantry_item_id
+        ? (pantryByID.get(e.pantry_item_id)?.name ?? "Unknown item")
+        : e.recipe_id
+          ? (recipeByID.get(e.recipe_id)?.name ?? "Unknown recipe")
+          : "Untitled entry";
+      const key = e.pantry_item_id
+        ? `pantry:${e.pantry_item_id}`
+        : e.recipe_id
+          ? `recipe:${e.recipe_id}`
+          : `name:${name}`;
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          key,
+          name,
+          isRecipe: !!e.recipe_id,
+          quantity: 0,
+          calories: 0,
+          protein_g: 0,
+          fat_g: 0,
+          carbs_g: 0,
+          entryIDs: [],
+        };
+        map.set(key, g);
+        order.push(key);
+      }
+      g.quantity += e.quantity;
+      g.calories += e.calories;
+      g.protein_g += e.protein_g;
+      g.fat_g += e.fat_g;
+      g.carbs_g += e.carbs_g;
+      g.entryIDs.push(e.id);
+    }
+    return order.map((k) => map.get(k) as EntryGroup);
+  }, [entries, pantryByID, recipeByID]);
+
   const subtotal = useMemo(() => {
     const t = { calories: 0, protein_g: 0, fat_g: 0, carbs_g: 0 };
     for (const e of entries) {
@@ -658,20 +719,14 @@ function MealSection({
               )}g`}
         </Text>
       </View>
-      {entries.map((e) => {
-        const name = e.pantry_item_id
-          ? (pantryByID.get(e.pantry_item_id)?.name ?? "Unknown item")
-          : e.recipe_id
-            ? (recipeByID.get(e.recipe_id)?.name ?? "Unknown recipe")
-            : "Untitled entry";
+      {groups.map((g) => {
+        const busyKey = g.entryIDs.join(",");
         return (
-          <EntryRow
-            key={e.id}
-            entry={e}
-            name={name}
-            isRecipe={!!e.recipe_id}
-            busy={rowBusyID === e.id}
-            onDelete={() => onDelete(e.id)}
+          <EntryGroupRow
+            key={g.key}
+            group={g}
+            busy={rowBusyID === busyKey}
+            onDelete={() => onDelete(g.entryIDs)}
           />
         );
       })}
@@ -679,46 +734,56 @@ function MealSection({
   );
 }
 
-function EntryRow({
-  entry,
-  name,
-  isRecipe,
+function EntryGroupRow({
+  group,
   busy,
   onDelete,
 }: {
-  entry: NutritionLogEntry;
-  name: string;
-  isRecipe: boolean;
+  group: EntryGroup;
   busy: boolean;
   onDelete: () => void;
 }) {
+  const logCount = group.entryIDs.length;
   return (
     <View className="flex-row items-center justify-between gap-3 rounded-md border border-border bg-surface px-3 py-2">
       <View className="flex-1 gap-0.5">
         <Text className="text-sm font-medium text-foreground" numberOfLines={1}>
-          {name}{" "}
+          {group.name}{" "}
           <Text className="text-xs tabular-nums text-muted">
-            × {formatNumber(entry.quantity)}
+            × {formatNumber(group.quantity)}
           </Text>
-          {isRecipe && (
+          {group.isRecipe && (
             <Text className="ml-1 text-[10px] uppercase tracking-wider text-muted">
               {" "}
               recipe
             </Text>
           )}
+          {logCount > 1 && (
+            <Text className="text-[10px] uppercase tracking-wider text-muted">
+              {"  "}
+              {logCount} logs
+            </Text>
+          )}
         </Text>
         <Text className="text-xs tabular-nums text-muted">
-          {formatNumber(entry.calories)} cal · P {formatNumber(entry.protein_g)}g
-          · F {formatNumber(entry.fat_g)}g · C {formatNumber(entry.carbs_g)}g
+          {formatNumber(group.calories)} cal · P {formatNumber(group.protein_g)}g
+          · F {formatNumber(group.fat_g)}g · C {formatNumber(group.carbs_g)}g
         </Text>
       </View>
       <Pressable
         onPress={onDelete}
         disabled={busy}
         accessibilityRole="button"
+        accessibilityLabel={
+          logCount > 1 ? `Delete all ${logCount} logs` : "Delete"
+        }
         className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
       >
-        <Text className="text-xs text-danger">Delete</Text>
+        {busy ? (
+          <ActivityIndicator color="#ef4444" />
+        ) : (
+          <Text className="text-xs text-danger">Delete</Text>
+        )}
       </Pressable>
     </View>
   );
