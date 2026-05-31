@@ -6,7 +6,6 @@
 // UX adaptations from web → mobile:
 //   - No native date-picker for v1 (would need an extra dep). Prev /
 //     next / Today buttons plus a clear date label cover it.
-//   - Macro tiles are 2×2 on phone widths instead of 4-up.
 //   - Quick-add is a single bottom-sticky row: meal pills + item
 //     picker (collapsible list) + servings + Log button.
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -188,8 +187,6 @@ export function TodayView() {
         className="flex-1"
         contentContainerClassName="px-4 pb-4 gap-4"
       >
-        <MacroSummary totals={totals} entryCount={entries?.length ?? 0} />
-
         {goals && (
           <MacroGoalRings
             totals={totals}
@@ -280,87 +277,6 @@ function NavBtn({ label, onPress }: { label: string; onPress: () => void }) {
     >
       <Text className="text-base font-semibold text-foreground">{label}</Text>
     </Pressable>
-  );
-}
-
-// --- Macro tiles --------------------------------------------------
-
-function MacroSummary({
-  totals,
-  entryCount,
-}: {
-  totals: { calories: number; protein_g: number; fat_g: number; carbs_g: number };
-  entryCount: number;
-}) {
-  // % of macro-calories per the 4/4/9 per-gram math.
-  const proteinCal = totals.protein_g * 4;
-  const carbCal = totals.carbs_g * 4;
-  const fatCal = totals.fat_g * 9;
-  const totalMacroCal = proteinCal + carbCal + fatCal;
-  const pct = (n: number) =>
-    totalMacroCal > 0 ? Math.round((n / totalMacroCal) * 100) : 0;
-  return (
-    <View className="flex-row flex-wrap gap-2">
-      <Tile
-        flex
-        label="Calories"
-        value={formatNumber(totals.calories)}
-        sub={`${entryCount} ${entryCount === 1 ? "entry" : "entries"}`}
-      />
-      <Tile
-        flex
-        label="Protein"
-        value={`${formatNumber(totals.protein_g)} g`}
-        sub={`${pct(proteinCal)}% of macros`}
-        accent="text-emerald-300"
-      />
-      <Tile
-        flex
-        label="Carbs"
-        value={`${formatNumber(totals.carbs_g)} g`}
-        sub={`${pct(carbCal)}% of macros`}
-        accent="text-amber-300"
-      />
-      <Tile
-        flex
-        label="Fat"
-        value={`${formatNumber(totals.fat_g)} g`}
-        sub={`${pct(fatCal)}% of macros`}
-        accent="text-pink-300"
-      />
-    </View>
-  );
-}
-
-function Tile({
-  label,
-  value,
-  sub,
-  accent,
-  flex,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  accent?: string;
-  flex?: boolean;
-}) {
-  return (
-    <View
-      className={`rounded-lg border border-border bg-surface px-3 py-2 ${
-        flex ? "min-w-[45%] flex-1" : ""
-      }`}
-    >
-      <Text
-        className={`text-lg font-semibold tabular-nums ${accent ?? "text-foreground"}`}
-      >
-        {value}
-      </Text>
-      <Text className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {label}
-      </Text>
-      <Text className="mt-0.5 text-[10px] text-muted">{sub}</Text>
-    </View>
   );
 }
 
