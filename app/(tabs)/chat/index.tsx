@@ -335,6 +335,15 @@ export default function ChatScreen() {
       for await (const ev of streamChat(token, {
         messages: nextMessages,
         session_id: sessionId,
+        // IANA timezone the agent uses to compute the user's local
+        // date and prepend it to the system prompt. Without this the
+        // model can't reliably answer "did I work out yesterday?" —
+        // it has no grounding for what "today" means. Hermes ships
+        // with full Intl support so the resolvedOptions() call is
+        // safe across iOS + Android. Server falls back to UTC if the
+        // string is bogus, so older clients without this field
+        // continue to work.
+        client_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       })) {
         if (ev.type === "text_delta") {
           assistantText += ev.text;
