@@ -3,13 +3,30 @@
 // lib/speech.ts: callers register onTranscript/onEnd/onError and
 // get back a session handle with stop()/abort().
 //
-// Why a wrapper at all? expo-speech-recognition exposes the result
-// via global useSpeechRecognitionEvent hooks, but the chat surface
-// already manages a lot of state — sticking with the explicit
-// callback contract makes the call site simpler and matches the
-// web sibling exactly so future readers can reason about both
-// platforms with the same mental model.
-import { ExpoSpeechRecognitionModule } from "expo-speech-recognition";
+// The native module is loaded via a defensive require() inside a
+// try/catch — if the running dev-client wasn't built with
+// expo-speech-recognition in the binary, isSpeechRecognitionAvailable()
+// reports false and the chat page hides the mic button. Without this
+// guard, the static `import { ExpoSpeechRecognitionModule }` would
+// crash the JS bundle the moment chat/index.tsx evaluated. Matches
+// the web sibling's graceful-degrade pattern for Firefox.
+
+// Type-only import so TypeScript still knows the module's shape, but
+// the runtime require below decides whether the module is actually
+// present. `import type` gets erased at compile time and never touches
+// the native bridge.
+import type { ExpoSpeechRecognitionModule as ExpoSpeechRecognitionModuleType } from "expo-speech-recognition";
+
+let speechModule: typeof ExpoSpeechRecognitionModuleType | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  speechModule = require("expo-speech-recognition").ExpoSpeechRecognitionModule;
+} catch {
+  // Native module not in this build. Most common reason: the
+  // dev-client `.app` was built before expo-speech-recognition was
+  // installed, so the pod isn't linked. The user needs a fresh EAS
+  // build; meanwhile the app keeps booting.
+}
 
 export type SpeechSession = {
   /** Stop listening and finalize whatever has been heard so far. */
@@ -43,70 +60,53 @@ export type SpeechSessionCallbacks = {
 };
 
 /**
- * Always returns true on iOS + Android — the lib's native module
- * is always available when the dev-client / production binary has
- * it linked. Lives behind a function for parity with the web
- * sibling (where the SpeechRecognition global is browser-gated).
- *
- * If the lib is ever unavailable (e.g. running in Expo Go on a
- * stale dev-client that wasn't rebuilt after install), the
- * underlying ExpoSpeechRecognitionModule access will throw on
- * start() — the chat page handles that gracefully.
+ * True when the native expo-speech-recognition module is linked
+ * into the running binary. False on a dev-client that pre-dates
+ * the install — the chat page reads this to decide whether to
+ * show the mic button at all.
  */
 export function isSpeechRecognitionAvailable(): boolean {
-  return true;
+  return speechModule !== null;
 }
 
 /**
  * Request mic + speech-recognition permissions if we don't have
- * them yet. Returns true when both are granted. Safe to call
- * multiple times — the OS handles deduplication.
+ * them yet. Returns true when both are granted. Returns false
+ * (without prompting) if the native module isn't in the build.
  */
 export async function ensureSpeechPermissions(): Promise<boolean> {
-  const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+  if (!speechModule) return false;
+  const result = await speechModule.requestPermissionsAsync();
   return !!result.granted;
 }
 
 /**
  * Start a single utterance recognition session and return controls
- * to stop or abort it. Mirrors the web's startSpeechSession exactly
- * so the chat page's handlers don't need to branch on platform.
- *
- * Callers MUST call ensureSpeechPermissions() before calling this
- * the first time — the native module will throw on a denied
- * permission and onError receives the platform error code, which
- * the chat page surfaces as the inline "allow mic in settings"
- * hint.
+ * to stop or abort it. Throws when the native module isn't loaded —
+ * callers should feature-detect via isSpeechRecognitionAvailable()
+ * before invoking.
  */
 export function startSpeechSession(
   callbacks: SpeechSessionCallbacks,
 ): SpeechSession {
-  // The module's event listeners are global per-process — we attach
-  // ours, then remove them when the session ends so subsequent
-  // sessions don't double-fire callbacks.
-  const removeResult = ExpoSpeechRecognitionModule.addListener(
-    "result",
-    (event) => {
-      // event.results is an array of { transcript, confidence };
-      // join into a single cumulative string. event.isFinal flips
-      // true on the last result of the utterance.
-      const transcript = event.results
-        .map((r) => r.transcript)
-        .join("");
-      callbacks.onTranscript(transcript, event.isFinal);
-    },
-  );
-  const removeEnd = ExpoSpeechRecognitionModule.addListener("end", () => {
+  if (!speechModule) {
+    throw new Error(
+      "expo-speech-recognition native module is not in this build",
+    );
+  }
+  const module = speechModule;
+  const removeResult = module.addListener("result", (event) => {
+    const transcript = event.results.map((r) => r.transcript).join("");
+    callbacks.onTranscript(transcript, event.isFinal);
+  });
+  const removeEnd = module.addListener("end", () => {
     cleanup();
     callbacks.onEnd();
   });
-  const removeError = ExpoSpeechRecognitionModule.addListener(
-    "error",
-    (event) => {
-      cleanup();
-      callbacks.onError(String(event.error));
-    },
-  );
+  const removeError = module.addListener("error", (event) => {
+    cleanup();
+    callbacks.onError(String(event.error));
+  });
 
   let cleanedUp = false;
   function cleanup() {
@@ -117,7 +117,7 @@ export function startSpeechSession(
     removeError.remove();
   }
 
-  ExpoSpeechRecognitionModule.start({
+  module.start({
     lang: "en-US",
     interimResults: true,
     // continuous=false: single utterance, ends when the user stops
@@ -127,7 +127,7 @@ export function startSpeechSession(
   });
 
   return {
-    stop: () => ExpoSpeechRecognitionModule.stop(),
-    abort: () => ExpoSpeechRecognitionModule.abort(),
+    stop: () => module.stop(),
+    abort: () => module.abort(),
   };
 }

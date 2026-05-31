@@ -26,7 +26,6 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Markdown from "react-native-markdown-display";
-import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { File } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
@@ -41,9 +40,23 @@ import {
 import { generateChatSpeech, generateChatTitle } from "@/lib/agent";
 import {
   ensureSpeechPermissions,
+  isSpeechRecognitionAvailable,
   startSpeechSession,
   type SpeechSession,
 } from "@/lib/speech";
+import {
+  createPlayer,
+  isAudioPlaybackAvailable,
+  type AudioPlayer,
+} from "@/lib/voice-playback";
+
+// Feature-detect both native modules once at module load. The chat
+// surface hides the mic button + voice-mode toggle when the running
+// dev-client doesn't have them linked, so the app still boots after
+// installing an older .app by mistake. Same pattern the web client
+// uses to gracefully degrade on Firefox.
+const SPEECH_SUPPORTED = isSpeechRecognitionAvailable();
+const AUDIO_PLAYBACK_SUPPORTED = isAudioPlaybackAvailable();
 
 type ToolCall = {
   name: string;
@@ -452,28 +465,30 @@ export default function ChatScreen() {
           title: "Chat",
           headerRight: () => (
             <View className="flex-row items-center gap-2 pr-2">
-              <Pressable
-                onPress={toggleVoiceMode}
-                accessibilityRole="button"
-                accessibilityState={{ selected: voiceMode }}
-                accessibilityLabel={
-                  voiceMode
-                    ? "Voice mode on, tap to turn off"
-                    : "Voice mode off, tap to turn on"
-                }
-                hitSlop={6}
-                className={`rounded-full border px-2.5 py-1 active:opacity-80 ${
-                  voiceMode
-                    ? "border-accent bg-accent/15"
-                    : "border-border bg-surface"
-                }`}
-              >
-                <Ionicons
-                  name={voiceMode ? "volume-high" : "volume-mute"}
-                  size={14}
-                  color={voiceMode ? "#3b82f6" : "#a1a1aa"}
-                />
-              </Pressable>
+              {AUDIO_PLAYBACK_SUPPORTED && (
+                <Pressable
+                  onPress={toggleVoiceMode}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: voiceMode }}
+                  accessibilityLabel={
+                    voiceMode
+                      ? "Voice mode on, tap to turn off"
+                      : "Voice mode off, tap to turn on"
+                  }
+                  hitSlop={6}
+                  className={`rounded-full border px-2.5 py-1 active:opacity-80 ${
+                    voiceMode
+                      ? "border-accent bg-accent/15"
+                      : "border-border bg-surface"
+                  }`}
+                >
+                  <Ionicons
+                    name={voiceMode ? "volume-high" : "volume-mute"}
+                    size={14}
+                    color={voiceMode ? "#3b82f6" : "#a1a1aa"}
+                  />
+                </Pressable>
+              )}
               <Pressable
                 onPress={startNewChat}
                 accessibilityRole="button"
@@ -534,34 +549,36 @@ export default function ChatScreen() {
       )}
 
       <View className="flex-row items-end gap-2 border-t border-border bg-background px-4 py-3">
-        {/*
-          Push-to-talk mic. Pressable's onPressIn/onPressOut is the
-          native equivalent of the web's mousedown/mouseup pair —
-          hold to talk, release to commit. Permissions are
-          requested inside startListening on first hold; the
-          inline error surfaces if they're denied.
-        */}
-        <Pressable
-          onPressIn={startListening}
-          onPressOut={stopListening}
-          disabled={streaming || loading || !sessionId}
-          accessibilityRole="button"
-          accessibilityLabel={
-            listening ? "Stop voice input" : "Hold to speak"
-          }
-          accessibilityState={{ selected: listening }}
-          className={`h-11 w-11 items-center justify-center rounded-lg border active:opacity-80 disabled:opacity-40 ${
-            listening
-              ? "border-danger/60 bg-danger/10"
-              : "border-border bg-surface"
-          }`}
-        >
-          <Ionicons
-            name="mic"
-            size={18}
-            color={listening ? "#ef4444" : "#a1a1aa"}
-          />
-        </Pressable>
+        {SPEECH_SUPPORTED && (
+          // Push-to-talk mic. Pressable's onPressIn/onPressOut is the
+          // native equivalent of the web's mousedown/mouseup pair —
+          // hold to talk, release to commit. Permissions are
+          // requested inside startListening on first hold; the
+          // inline error surfaces if they're denied. Hidden entirely
+          // when expo-speech-recognition isn't in the build (older
+          // dev-client without the native module).
+          <Pressable
+            onPressIn={startListening}
+            onPressOut={stopListening}
+            disabled={streaming || loading || !sessionId}
+            accessibilityRole="button"
+            accessibilityLabel={
+              listening ? "Stop voice input" : "Hold to speak"
+            }
+            accessibilityState={{ selected: listening }}
+            className={`h-11 w-11 items-center justify-center rounded-lg border active:opacity-80 disabled:opacity-40 ${
+              listening
+                ? "border-danger/60 bg-danger/10"
+                : "border-border bg-surface"
+            }`}
+          >
+            <Ionicons
+              name="mic"
+              size={18}
+              color={listening ? "#ef4444" : "#a1a1aa"}
+            />
+          </Pressable>
+        )}
         <TextInput
           value={input}
           onChangeText={setInput}
@@ -684,7 +701,20 @@ async function speakAndPlay(
   }
   uriRef.current = uri;
   try {
-    const player = createAudioPlayer(uri);
+    const player = createPlayer(uri);
+    if (!player) {
+      // expo-audio native module missing — defensive guard kicked
+      // in. Voice mode shouldn't have been toggleable in that
+      // state, but if the user got here anyway, silently drop
+      // the file and move on.
+      try {
+        new File(uri).delete();
+      } catch {
+        // best-effort
+      }
+      if (uriRef.current === uri) uriRef.current = null;
+      return;
+    }
     playerRef.current = player;
     player.addListener("playbackStatusUpdate", (status) => {
       if (!status.isLoaded) return;
@@ -712,7 +742,7 @@ async function speakAndPlay(
     });
     player.play();
   } catch (err) {
-    console.warn("voice mode: createAudioPlayer failed", err);
+    console.warn("voice mode: audio playback failed", err);
     try {
       new File(uri).delete();
     } catch {
