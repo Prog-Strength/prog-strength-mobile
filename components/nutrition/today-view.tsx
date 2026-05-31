@@ -14,7 +14,6 @@ import {
   Pressable,
   ScrollView,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -32,9 +31,9 @@ import {
   type PantryItem,
   type Recipe,
 } from "@/lib/api";
-import { SegmentedControl, type Segment } from "@/components/segmented-control";
 import { MacroGoalRings } from "@/components/nutrition/macro-goal-rings";
 import { MacroGoalsSheet } from "@/components/nutrition/macro-goals-sheet";
+import { QuickAddSheet } from "@/components/nutrition/quick-add-sheet";
 
 // Pin the meal section order regardless of API response ordering.
 // What users mentally expect a day to read like.
@@ -45,12 +44,6 @@ const MEAL_LABELS: Record<MealType, string> = {
   dinner: "Dinner",
   snack: "Snacks",
 };
-const MEAL_SEGMENTS: readonly Segment<MealType>[] = [
-  { value: "breakfast", label: "B" },
-  { value: "lunch", label: "L" },
-  { value: "dinner", label: "D" },
-  { value: "snack", label: "S" },
-];
 
 export function TodayView() {
   const router = useRouter();
@@ -60,6 +53,7 @@ export function TodayView() {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [goals, setGoals] = useState<MacroGoals | null>(null);
   const [showGoalsSheet, setShowGoalsSheet] = useState(false);
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
@@ -125,22 +119,27 @@ export function TodayView() {
     return out;
   }, [entries]);
 
+  // Returns a Promise so the QuickAddSheet can close itself on
+  // success: the sheet awaits this; on resolve it dismisses, on
+  // reject it stays open and reads the error from `logError`. The
+  // catch sets `logError` before re-throwing so the sheet sees the
+  // latest message.
   function handleLog(
     source: { kind: "pantry" | "recipe"; id: string },
     quantity: number,
     meal: MealType,
-  ) {
+  ): Promise<void> {
     const isToday = sameLocalDay(date, new Date());
     const consumedAt = isToday
       ? new Date()
       : new Date(date.getTime() + 12 * 60 * 60 * 1000);
     setLogBusy(true);
     setLogError(null);
-    Promise.resolve(getToken())
+    return Promise.resolve(getToken())
       .then(async (t) => {
         if (!t) {
           router.replace("/login");
-          return;
+          throw new Error("not signed in");
         }
         const entry = await createNutritionLogEntry(t, {
           ...(source.kind === "pantry"
@@ -152,7 +151,10 @@ export function TodayView() {
         });
         setEntries((prev) => (prev ? [entry, ...prev] : [entry]));
       })
-      .catch((err: Error) => setLogError(err.message))
+      .catch((err: Error) => {
+        setLogError(err.message);
+        throw err;
+      })
       .finally(() => setLogBusy(false));
   }
 
@@ -195,13 +197,14 @@ export function TodayView() {
           />
         )}
 
-        <QuickAdd
-          pantry={pantry}
-          recipes={recipes}
-          busy={logBusy}
-          error={logError}
-          onLog={handleLog}
-        />
+        <Pressable
+          onPress={() => setShowQuickAdd(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Quick add"
+          className="items-center self-end rounded-md bg-accent px-4 py-2 active:opacity-80"
+        >
+          <Text className="text-sm font-medium text-accent-fg">+ Quick add</Text>
+        </Pressable>
 
         {entries === null ? (
           <View className="items-center py-6">
@@ -229,6 +232,16 @@ export function TodayView() {
           onClose={() => setShowGoalsSheet(false)}
         />
       )}
+
+      <QuickAddSheet
+        open={showQuickAdd}
+        pantry={pantry}
+        recipes={recipes}
+        busy={logBusy}
+        error={logError}
+        onLog={handleLog}
+        onClose={() => setShowQuickAdd(false)}
+      />
     </View>
   );
 }
@@ -280,237 +293,6 @@ function NavBtn({ label, onPress }: { label: string; onPress: () => void }) {
   );
 }
 
-// --- Quick-add ----------------------------------------------------
-
-function QuickAdd({
-  pantry,
-  recipes,
-  busy,
-  error,
-  onLog,
-}: {
-  pantry: PantryItem[];
-  recipes: Recipe[];
-  busy: boolean;
-  error: string | null;
-  onLog: (
-    source: { kind: "pantry" | "recipe"; id: string },
-    quantity: number,
-    meal: MealType,
-  ) => void;
-}) {
-  const [meal, setMeal] = useState<MealType>(() =>
-    defaultMealForLocalHour(new Date()),
-  );
-  const [selection, setSelection] = useState<{
-    kind: "pantry" | "recipe";
-    id: string;
-    label: string;
-  } | null>(null);
-  const [quantity, setQuantity] = useState<string>("1");
-  const [pickerOpen, setPickerOpen] = useState(false);
-
-  if (pantry.length === 0 && recipes.length === 0) {
-    return (
-      <View className="rounded-lg border border-border bg-surface px-4 py-6">
-        <Text className="text-center text-sm font-medium text-foreground">
-          Add a pantry item first
-        </Text>
-        <Text className="mt-1 text-center text-xs text-muted">
-          The Pantry tab lets you save foods you eat often.
-        </Text>
-      </View>
-    );
-  }
-
-  return (
-    <View className="gap-2 rounded-lg border border-border bg-surface p-3">
-      <View className="flex-row items-center gap-2">
-        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-          Quick-add
-        </Text>
-        <View className="flex-1" />
-        <View className="w-44">
-          <SegmentedControl
-            value={meal}
-            onChange={setMeal}
-            segments={MEAL_SEGMENTS}
-            ariaLabel="Meal"
-          />
-        </View>
-      </View>
-
-      <Pressable
-        onPress={() => setPickerOpen((o) => !o)}
-        accessibilityRole="button"
-        className="rounded-md border border-border bg-background px-3 py-2 active:opacity-80"
-      >
-        <Text className="text-sm text-foreground">
-          {selection ? selection.label : "Pick item or recipe…"}
-        </Text>
-      </Pressable>
-
-      {pickerOpen && (
-        <Picker
-          pantry={pantry}
-          recipes={recipes}
-          onPick={(s) => {
-            setSelection(s);
-            setPickerOpen(false);
-          }}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
-
-      <View className="flex-row items-center gap-2">
-        <Text className="text-xs text-muted">Servings</Text>
-        <TextInput
-          value={quantity}
-          onChangeText={setQuantity}
-          keyboardType="decimal-pad"
-          editable={!busy}
-          className="w-20 rounded-md border border-border bg-background px-2 py-1.5 text-sm tabular-nums text-foreground"
-        />
-        <View className="flex-1" />
-        <Pressable
-          onPress={() => {
-            const q = Number(quantity);
-            if (!selection || !Number.isFinite(q) || q <= 0) return;
-            onLog({ kind: selection.kind, id: selection.id }, q, meal);
-            setQuantity("1");
-          }}
-          disabled={busy || !selection}
-          accessibilityRole="button"
-          className="rounded-md bg-accent px-4 py-1.5 active:opacity-80 disabled:opacity-50"
-        >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text className="text-xs font-medium text-accent-fg">Log</Text>
-          )}
-        </Pressable>
-      </View>
-
-      {error && <Text className="text-xs text-danger">{error}</Text>}
-    </View>
-  );
-}
-
-function Picker({
-  pantry,
-  recipes,
-  onPick,
-  onClose,
-}: {
-  pantry: PantryItem[];
-  recipes: Recipe[];
-  onPick: (s: {
-    kind: "pantry" | "recipe";
-    id: string;
-    label: string;
-  }) => void;
-  onClose: () => void;
-}) {
-  const [query, setQuery] = useState("");
-  const needle = query.trim().toLowerCase();
-  const filteredRecipes = needle
-    ? recipes.filter((r) => r.name.toLowerCase().includes(needle))
-    : recipes;
-  const filteredPantry = needle
-    ? pantry.filter((p) => p.name.toLowerCase().includes(needle))
-    : pantry;
-  type Row =
-    | { key: string; section: string; pick: () => void; label: string; sub: string }
-    | { key: string; header: string };
-  const rows: Row[] = [];
-  if (filteredRecipes.length > 0) {
-    rows.push({ key: "h-recipes", header: "Recipes" });
-    for (const r of filteredRecipes) {
-      rows.push({
-        key: `recipe:${r.id}`,
-        section: "Recipe",
-        pick: () =>
-          onPick({ kind: "recipe", id: r.id, label: `${r.name} (recipe)` }),
-        label: r.name,
-        sub: `${formatNumber(r.macros.calories)} cal / batch`,
-      });
-    }
-  }
-  if (filteredPantry.length > 0) {
-    rows.push({ key: "h-pantry", header: "Pantry" });
-    for (const p of filteredPantry) {
-      rows.push({
-        key: `pantry:${p.id}`,
-        section: "Pantry",
-        pick: () =>
-          onPick({ kind: "pantry", id: p.id, label: p.name }),
-        label: p.name,
-        sub: `${formatNumber(p.calories)} cal / ${formatNumber(p.serving_size)} ${p.serving_unit}`,
-      });
-    }
-  }
-  return (
-    <View className="max-h-64 rounded-md border border-border bg-background">
-      <TextInput
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Search…"
-        placeholderTextColor="#71717a"
-        autoFocus
-        className="border-b border-border px-3 py-2 text-sm text-foreground"
-      />
-      {/*
-        ScrollView (not FlatList) on purpose: this picker sits inside
-        the parent TodayView's vertical ScrollView, and a nested
-        VirtualizedList in the same orientation triggers RN's
-        windowing warning. Virtualization gives nothing useful here
-        anyway — at most a few dozen rows, all inside a max-h-64 box.
-      */}
-      <ScrollView keyboardShouldPersistTaps="handled">
-        {rows.length === 0 ? (
-          <Text className="px-3 py-3 text-center text-xs text-muted">
-            No matches.
-          </Text>
-        ) : (
-          rows.map((item) => {
-            if ("header" in item) {
-              return (
-                <Text
-                  key={item.key}
-                  className="bg-background px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted"
-                >
-                  {item.header}
-                </Text>
-              );
-            }
-            return (
-              <Pressable
-                key={item.key}
-                onPress={item.pick}
-                accessibilityRole="button"
-                className="border-b border-border/60 px-3 py-2 active:opacity-80"
-              >
-                <Text className="text-sm text-foreground" numberOfLines={1}>
-                  {item.label}
-                </Text>
-                <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
-                  {item.sub}
-                </Text>
-              </Pressable>
-            );
-          })
-        )}
-      </ScrollView>
-      <Pressable
-        onPress={onClose}
-        accessibilityRole="button"
-        className="border-t border-border bg-surface px-3 py-2 active:opacity-80"
-      >
-        <Text className="text-center text-xs text-muted">Close</Text>
-      </Pressable>
-    </View>
-  );
-}
 
 // --- Meal sections ------------------------------------------------
 
@@ -755,14 +537,6 @@ function addDays(d: Date, n: number): Date {
   const out = new Date(d);
   out.setDate(out.getDate() + n);
   return startOfLocalDay(out);
-}
-
-function defaultMealForLocalHour(d: Date): MealType {
-  const h = d.getHours();
-  if (h >= 4 && h < 11) return "breakfast";
-  if (h >= 11 && h < 15) return "lunch";
-  if (h >= 17 && h < 22) return "dinner";
-  return "snack";
 }
 
 function formatNumber(v: number): string {
