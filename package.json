@@ -23,6 +23,7 @@
     "expo-updates": "~55.0.24",
     "expo-web-browser": "~55.0.16",
     "nativewind": "^4.2.4",
+    "punycode": "^2.3.1",
     "react": "19.2.6",
     "react-native": "0.83.6",
     "react-native-gesture-handler": "~2.30.0",
