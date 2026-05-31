@@ -262,31 +262,40 @@ function MonthGrid({
   onSelect: (d: Date) => void;
 }) {
   const today = startOfLocalDay(new Date());
-  // 42 cells in 6 rows of 7. We render as one View with flex-wrap so
-  // each cell can carry width: 14.28% (1/7). The fixed cell height
-  // (h-12) is what gives the grid its grid-iness without measuring
-  // the viewport.
+  // 42 cells laid out as 6 explicit rows of 7 cells at flex-1 each
+  // — same primitive the DayLabelsRow uses above, so columns line
+  // up by construction. Earlier revisions used a single
+  // `flex-row flex-wrap` container with `w-[14.2857%]` per cell,
+  // but the percentage rounding produced rows that didn't perfectly
+  // match the labels row's flex-1 columns, shifting dates a column
+  // or two away from their day-of-week.
+  const rows: Date[][] = [];
+  for (let r = 0; r < 6; r++) {
+    rows.push(grid.slice(r * 7, r * 7 + 7));
+  }
   return (
-    <View className="flex-row flex-wrap px-2">
-      {grid.map((d, i) => {
-        const inMonth = d.getMonth() === monthAnchor.getMonth();
-        const isToday = sameLocalDay(d, today);
-        const isSelected = sameLocalDay(d, selectedDay);
-        const hasWorkouts =
-          (workoutsByDay.get(localDateKey(d))?.length ?? 0) > 0;
-        return (
-          <Pressable
-            key={i}
-            onPress={() => onSelect(startOfLocalDay(d))}
-            accessibilityRole="button"
-            accessibilityLabel={d.toLocaleDateString("en-US", {
-              weekday: "long",
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-            className="h-12 w-[14.2857%] items-center justify-center"
-          >
+    <View className="px-2">
+      {rows.map((row, rowIdx) => (
+        <View key={rowIdx} className="flex-row">
+          {row.map((d) => {
+            const inMonth = d.getMonth() === monthAnchor.getMonth();
+            const isToday = sameLocalDay(d, today);
+            const isSelected = sameLocalDay(d, selectedDay);
+            const hasWorkouts =
+              (workoutsByDay.get(localDateKey(d))?.length ?? 0) > 0;
+            return (
+              <Pressable
+                key={d.toISOString()}
+                onPress={() => onSelect(startOfLocalDay(d))}
+                accessibilityRole="button"
+                accessibilityLabel={d.toLocaleDateString("en-US", {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+                className="h-12 flex-1 items-center justify-center"
+              >
             <View
               className={`h-9 w-9 items-center justify-center rounded-full ${
                 isSelected
@@ -315,9 +324,11 @@ function MonthGrid({
                 }`}
               />
             )}
-          </Pressable>
-        );
-      })}
+              </Pressable>
+            );
+          })}
+        </View>
+      ))}
     </View>
   );
 }
