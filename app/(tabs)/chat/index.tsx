@@ -26,7 +26,7 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Markdown from "react-native-markdown-display";
-import { Audio } from "expo-av";
+import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { File } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
@@ -103,11 +103,11 @@ export default function ChatScreen() {
   // Active recognition session. Ref (not state) because it's a
   // mutable native handle, not render state.
   const speechSessionRef = useRef<SpeechSession | null>(null);
-  // Active TTS playback: the expo-av Sound and the on-disk mp3
-  // path. Refs because Sound is an imperative handle; we tear
-  // both down between turns and on unmount so stale audio doesn't
-  // play over the next reply.
-  const playbackSoundRef = useRef<Audio.Sound | null>(null);
+  // Active TTS playback: the expo-audio AudioPlayer and the on-disk
+  // mp3 path. Refs because the player is an imperative native handle;
+  // we tear both down between turns and on unmount so stale audio
+  // doesn't play over the next reply.
+  const playbackPlayerRef = useRef<AudioPlayer | null>(null);
   const playbackUriRef = useRef<string | null>(null);
 
   // Bootstrap the session on every mount. Two paths:
@@ -172,19 +172,20 @@ export default function ChatScreen() {
   }, [messages]);
 
   // Tear down active playback. Idempotent — safe to call when
-  // nothing is playing. Both the Sound and the on-disk mp3 file
-  // need explicit cleanup; without the delete the cache directory
-  // would slowly fill up over a long session.
-  const stopPlayback = useCallback(async () => {
-    const sound = playbackSoundRef.current;
+  // nothing is playing. Both the AudioPlayer and the on-disk mp3
+  // file need explicit cleanup; without the delete the cache
+  // directory would slowly fill up over a long session.
+  const stopPlayback = useCallback(() => {
+    const player = playbackPlayerRef.current;
     const uri = playbackUriRef.current;
-    playbackSoundRef.current = null;
+    playbackPlayerRef.current = null;
     playbackUriRef.current = null;
-    if (sound) {
+    if (player) {
       try {
-        await sound.unloadAsync();
+        player.remove();
       } catch {
-        // sound may already be unloaded if `didJustFinish` ran first
+        // player may already be released if the natural-end
+        // listener fired first
       }
     }
     if (uri) {
@@ -207,7 +208,7 @@ export default function ChatScreen() {
     setError(null);
     // Don't listen over the agent's own voice — it'd just feed
     // back into the recognizer.
-    await stopPlayback();
+    stopPlayback();
     const granted = await ensureSpeechPermissions();
     if (!granted) {
       setError(
@@ -253,19 +254,17 @@ export default function ChatScreen() {
       const next = !prev;
       // Turning voice mode off mid-playback should silence the
       // active audio — surprising otherwise.
-      if (!next) {
-        void stopPlayback();
-      }
+      if (!next) stopPlayback();
       return next;
     });
   }, [stopPlayback]);
 
   // Cleanup on unmount. Tabs in Expo Router stay mounted across
   // tab switches, but a hard navigation or app close still needs
-  // to release the native sound + delete the temp file.
+  // to release the native player + delete the temp file.
   useEffect(() => {
     return () => {
-      void stopPlayback();
+      stopPlayback();
       speechSessionRef.current?.abort();
     };
   }, [stopPlayback]);
@@ -403,7 +402,7 @@ export default function ChatScreen() {
           void speakAndPlay(
             token,
             assistantText,
-            playbackSoundRef,
+            playbackPlayerRef,
             playbackUriRef,
           );
         }
@@ -651,19 +650,21 @@ function fallbackTitle(userText: string): string {
 async function speakAndPlay(
   token: string,
   text: string,
-  soundRef: React.MutableRefObject<Audio.Sound | null>,
+  playerRef: React.MutableRefObject<AudioPlayer | null>,
   uriRef: React.MutableRefObject<string | null>,
 ): Promise<void> {
-  // Tear down any in-flight playback first.
-  const prevSound = soundRef.current;
+  // Tear down any in-flight playback first. .remove() releases the
+  // native handle; without it back-to-back turns would stack two
+  // simultaneous players.
+  const prevPlayer = playerRef.current;
   const prevUri = uriRef.current;
-  soundRef.current = null;
+  playerRef.current = null;
   uriRef.current = null;
-  if (prevSound) {
+  if (prevPlayer) {
     try {
-      await prevSound.unloadAsync();
+      prevPlayer.remove();
     } catch {
-      // already unloaded
+      // already released
     }
   }
   if (prevUri) {
@@ -683,18 +684,19 @@ async function speakAndPlay(
   }
   uriRef.current = uri;
   try {
-    const { sound } = await Audio.Sound.createAsync(
-      { uri },
-      { shouldPlay: true },
-    );
-    soundRef.current = sound;
-    sound.setOnPlaybackStatusUpdate((status) => {
+    const player = createAudioPlayer(uri);
+    playerRef.current = player;
+    player.addListener("playbackStatusUpdate", (status) => {
       if (!status.isLoaded) return;
       if (status.didJustFinish) {
-        // Unload + delete on natural completion. The refs may
-        // already point at a newer turn's playback by the time
-        // this fires; only clear them if they still match.
-        sound.unloadAsync().catch(() => {});
+        // Natural end: release the player + delete the temp file.
+        // The refs may already point at a newer turn's playback by
+        // the time this fires; only clear them if they still match.
+        try {
+          player.remove();
+        } catch {
+          // already released
+        }
         if (uriRef.current === uri) {
           try {
             new File(uri).delete();
@@ -703,14 +705,14 @@ async function speakAndPlay(
           }
           uriRef.current = null;
         }
-        if (soundRef.current === sound) {
-          soundRef.current = null;
+        if (playerRef.current === player) {
+          playerRef.current = null;
         }
       }
     });
+    player.play();
   } catch (err) {
-    console.warn("voice mode: Audio.Sound.createAsync failed", err);
-    // Try to delete the file we wrote since playback never got going.
+    console.warn("voice mode: createAudioPlayer failed", err);
     try {
       new File(uri).delete();
     } catch {

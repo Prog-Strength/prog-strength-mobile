@@ -32,7 +32,8 @@
           "microphonePermission": "Prog Strength uses the microphone to turn spoken workout logs into chat messages.",
           "speechRecognitionPermission": "Prog Strength uses speech recognition to turn your voice into chat messages without leaving the gym."
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

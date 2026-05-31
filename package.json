@@ -12,8 +12,8 @@
   },
   "dependencies": {
     "expo": "~55.0.25",
+    "expo-audio": "~55.0.14",
     "expo-auth-session": "~55.0.16",
-    "expo-av": "^16.0.8",
     "expo-constants": "~55.0.16",
     "expo-crypto": "~55.0.15",
     "expo-dev-client": "~55.0.35",
