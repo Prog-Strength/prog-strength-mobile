@@ -1,10 +1,9 @@
-// Bodyweight view inside the Nutrition tab. Add-entry form on top,
-// history list below. Trend chart is intentionally deferred to Phase 4
-// — adding `react-native-svg` just for this one chart isn't worth the
-// dep churn while the Progress tab is also going to need it; we'll
-// share the chart primitive there. For now the history list double-
-// duties as "see your recent trajectory."
-import { useCallback, useEffect, useState } from "react";
+// Bodyweight view inside the Nutrition tab. Add-entry form, trend
+// chart with simple stats (avg / min / max), then history list. The
+// chart and stats are scoped to a time-window selector (7D/30D/90D/All)
+// so the view answers "how am I trending lately" without forcing the
+// user to scroll the full history.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -21,8 +20,29 @@ import {
   listBodyweight,
   type BodyweightEntry,
 } from "@/lib/api";
+import {
+  BodyweightChart,
+  computeStats,
+} from "@/components/nutrition/bodyweight-chart";
+import { SegmentedControl, type Segment } from "@/components/segmented-control";
 
 type Unit = "lb" | "kg";
+
+type RangeKey = "7d" | "30d" | "90d" | "all";
+
+const RANGE_SEGMENTS: readonly Segment<RangeKey>[] = [
+  { value: "7d", label: "7D" },
+  { value: "30d", label: "30D" },
+  { value: "90d", label: "90D" },
+  { value: "all", label: "All" },
+];
+
+const RANGE_DAYS: Record<RangeKey, number | null> = {
+  "7d": 7,
+  "30d": 30,
+  "90d": 90,
+  all: null,
+};
 
 export function BodyweightView() {
   const router = useRouter();
@@ -33,6 +53,23 @@ export function BodyweightView() {
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [rowBusyID, setRowBusyID] = useState<string | null>(null);
+  const [range, setRange] = useState<RangeKey>("30d");
+
+  const windowEntries = useMemo(() => {
+    if (!entries) return [];
+    const days = RANGE_DAYS[range];
+    if (days === null) return entries;
+    const cutoff = Date.now() - days * 86_400_000;
+    return entries.filter((e) => {
+      const t = new Date(e.measured_at).getTime();
+      return Number.isFinite(t) && t >= cutoff;
+    });
+  }, [entries, range]);
+
+  const stats = useMemo(
+    () => computeStats(windowEntries, unit),
+    [windowEntries, unit],
+  );
 
   const refetch = useCallback(() => {
     setError(null);
@@ -151,6 +188,37 @@ export function BodyweightView() {
               <Text className="text-xs text-danger">{formError}</Text>
             )}
           </View>
+          <View className="gap-3 rounded-lg border border-border bg-surface p-3">
+            <View className="flex-row items-center justify-between gap-2">
+              <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                Trend
+              </Text>
+              <View className="min-w-[180px]">
+                <SegmentedControl
+                  value={range}
+                  onChange={setRange}
+                  segments={RANGE_SEGMENTS}
+                  ariaLabel="Time range"
+                />
+              </View>
+            </View>
+            {stats ? (
+              <>
+                <BodyweightChart entries={windowEntries} unit={unit} />
+                <View className="flex-row gap-2">
+                  <StatTile label="Avg" value={stats.avg} unit={stats.unit} />
+                  <StatTile label="Min" value={stats.min} unit={stats.unit} />
+                  <StatTile label="Max" value={stats.max} unit={stats.unit} />
+                </View>
+              </>
+            ) : (
+              <View className="items-center justify-center py-6">
+                <Text className="text-xs text-muted">
+                  No readings in this range.
+                </Text>
+              </View>
+            )}
+          </View>
           <Text className="text-lg font-semibold text-foreground">
             History ({entries.length})
           </Text>
@@ -210,6 +278,28 @@ export function BodyweightView() {
         );
       }}
     />
+  );
+}
+
+function StatTile({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value: number;
+  unit: Unit;
+}) {
+  return (
+    <View className="flex-1 rounded-md border border-border bg-background p-2">
+      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+        {label}
+      </Text>
+      <Text className="mt-0.5 text-sm font-semibold text-foreground tabular-nums">
+        {formatNumber(value)}{" "}
+        <Text className="text-xs font-normal text-muted">{unit}</Text>
+      </Text>
+    </View>
   );
 }
 
