@@ -26,6 +26,9 @@ import {
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
 import Markdown from "react-native-markdown-display";
+import { Audio } from "expo-av";
+import { File } from "expo-file-system";
+import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
 import { streamChat } from "@/lib/stream";
 import {
@@ -35,7 +38,12 @@ import {
   patchChatSessionTitle,
   type ChatMessage as PersistedChatMessage,
 } from "@/lib/api";
-import { generateChatTitle } from "@/lib/agent";
+import { generateChatSpeech, generateChatTitle } from "@/lib/agent";
+import {
+  ensureSpeechPermissions,
+  startSpeechSession,
+  type SpeechSession,
+} from "@/lib/speech";
 
 type ToolCall = {
   name: string;
@@ -84,6 +92,23 @@ export default function ChatScreen() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+
+  // Voice mode: when on, completed assistant turns play back as
+  // audio via the agent's /speak endpoint. Off by default and
+  // session-scoped (per the voice-chat SOW); resets on tab unmount.
+  const [voiceMode, setVoiceMode] = useState(false);
+  // True while the user is holding the mic button and the
+  // recognizer is listening. Drives the red pulsing visual.
+  const [listening, setListening] = useState(false);
+  // Active recognition session. Ref (not state) because it's a
+  // mutable native handle, not render state.
+  const speechSessionRef = useRef<SpeechSession | null>(null);
+  // Active TTS playback: the expo-av Sound and the on-disk mp3
+  // path. Refs because Sound is an imperative handle; we tear
+  // both down between turns and on unmount so stale audio doesn't
+  // play over the next reply.
+  const playbackSoundRef = useRef<Audio.Sound | null>(null);
+  const playbackUriRef = useRef<string | null>(null);
 
   // Bootstrap the session on every mount. Two paths:
   //   - URL has ?session=<id>: GET to rehydrate (history + persisted
@@ -145,6 +170,105 @@ export default function ChatScreen() {
   useEffect(() => {
     listRef.current?.scrollToEnd({ animated: true });
   }, [messages]);
+
+  // Tear down active playback. Idempotent — safe to call when
+  // nothing is playing. Both the Sound and the on-disk mp3 file
+  // need explicit cleanup; without the delete the cache directory
+  // would slowly fill up over a long session.
+  const stopPlayback = useCallback(async () => {
+    const sound = playbackSoundRef.current;
+    const uri = playbackUriRef.current;
+    playbackSoundRef.current = null;
+    playbackUriRef.current = null;
+    if (sound) {
+      try {
+        await sound.unloadAsync();
+      } catch {
+        // sound may already be unloaded if `didJustFinish` ran first
+      }
+    }
+    if (uri) {
+      try {
+        new File(uri).delete();
+      } catch {
+        // best-effort cleanup; the OS reclaims cacheDirectory on
+        // low-storage anyway
+      }
+    }
+  }, []);
+
+  // Push-to-talk: onPressIn starts a recognition session,
+  // onPressOut stops it. The recognizer fills the composer's
+  // `input` state with cumulative transcripts as the user speaks;
+  // release commits the final transcript but doesn't send — the
+  // user edits + hits Send manually. Same safety contract as web.
+  const startListening = useCallback(async () => {
+    if (listening) return;
+    setError(null);
+    // Don't listen over the agent's own voice — it'd just feed
+    // back into the recognizer.
+    await stopPlayback();
+    const granted = await ensureSpeechPermissions();
+    if (!granted) {
+      setError(
+        "Microphone or speech recognition is blocked. Allow them in Settings.",
+      );
+      return;
+    }
+    try {
+      const session = startSpeechSession({
+        onTranscript: (transcript) => {
+          setInput(transcript);
+        },
+        onEnd: () => {
+          setListening(false);
+          speechSessionRef.current = null;
+        },
+        onError: (code) => {
+          if (code === "not-allowed" || code === "service-not-allowed") {
+            setError(
+              "Microphone or speech recognition is blocked. Allow them in Settings.",
+            );
+          }
+          setListening(false);
+          speechSessionRef.current = null;
+        },
+      });
+      speechSessionRef.current = session;
+      setListening(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Voice input failed to start");
+    }
+  }, [listening, stopPlayback]);
+
+  const stopListening = useCallback(() => {
+    if (speechSessionRef.current) {
+      speechSessionRef.current.stop();
+      // onEnd flips `listening` to false and clears the ref.
+    }
+  }, []);
+
+  const toggleVoiceMode = useCallback(() => {
+    setVoiceMode((prev) => {
+      const next = !prev;
+      // Turning voice mode off mid-playback should silence the
+      // active audio — surprising otherwise.
+      if (!next) {
+        void stopPlayback();
+      }
+      return next;
+    });
+  }, [stopPlayback]);
+
+  // Cleanup on unmount. Tabs in Expo Router stay mounted across
+  // tab switches, but a hard navigation or app close still needs
+  // to release the native sound + delete the temp file.
+  useEffect(() => {
+    return () => {
+      void stopPlayback();
+      speechSessionRef.current?.abort();
+    };
+  }, [stopPlayback]);
 
   const send = useCallback(async () => {
     const trimmed = input.trim();
@@ -270,6 +394,19 @@ export default function ChatScreen() {
           // shows up in the history list whenever the PATCH lands.
           void titleAndPatch(token, sessionId, trimmed, assistantText);
         }
+
+        if (voiceMode) {
+          // Background TTS playback. Same fire-and-forget shape as
+          // the title flow. /speak failures (503 if OPENAI_API_KEY
+          // unset, 429 if quota exhausted) silently drop to text-
+          // only for the turn — voice is enhancement, not core.
+          void speakAndPlay(
+            token,
+            assistantText,
+            playbackSoundRef,
+            playbackUriRef,
+          );
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -282,7 +419,16 @@ export default function ChatScreen() {
     } finally {
       setStreaming(false);
     }
-  }, [input, messages, router, sessionId, sessionPersisted, loading, streaming]);
+  }, [
+    input,
+    messages,
+    router,
+    sessionId,
+    sessionPersisted,
+    loading,
+    streaming,
+    voiceMode,
+  ]);
 
   const startNewChat = () => {
     // Pushing /chat without ?session triggers the bootstrap effect's
@@ -307,6 +453,28 @@ export default function ChatScreen() {
           title: "Chat",
           headerRight: () => (
             <View className="flex-row items-center gap-2 pr-2">
+              <Pressable
+                onPress={toggleVoiceMode}
+                accessibilityRole="button"
+                accessibilityState={{ selected: voiceMode }}
+                accessibilityLabel={
+                  voiceMode
+                    ? "Voice mode on, tap to turn off"
+                    : "Voice mode off, tap to turn on"
+                }
+                hitSlop={6}
+                className={`rounded-full border px-2.5 py-1 active:opacity-80 ${
+                  voiceMode
+                    ? "border-accent bg-accent/15"
+                    : "border-border bg-surface"
+                }`}
+              >
+                <Ionicons
+                  name={voiceMode ? "volume-high" : "volume-mute"}
+                  size={14}
+                  color={voiceMode ? "#3b82f6" : "#a1a1aa"}
+                />
+              </Pressable>
               <Pressable
                 onPress={startNewChat}
                 accessibilityRole="button"
@@ -367,10 +535,44 @@ export default function ChatScreen() {
       )}
 
       <View className="flex-row items-end gap-2 border-t border-border bg-background px-4 py-3">
+        {/*
+          Push-to-talk mic. Pressable's onPressIn/onPressOut is the
+          native equivalent of the web's mousedown/mouseup pair —
+          hold to talk, release to commit. Permissions are
+          requested inside startListening on first hold; the
+          inline error surfaces if they're denied.
+        */}
+        <Pressable
+          onPressIn={startListening}
+          onPressOut={stopListening}
+          disabled={streaming || loading || !sessionId}
+          accessibilityRole="button"
+          accessibilityLabel={
+            listening ? "Stop voice input" : "Hold to speak"
+          }
+          accessibilityState={{ selected: listening }}
+          className={`h-11 w-11 items-center justify-center rounded-lg border active:opacity-80 disabled:opacity-40 ${
+            listening
+              ? "border-danger/60 bg-danger/10"
+              : "border-border bg-surface"
+          }`}
+        >
+          <Ionicons
+            name="mic"
+            size={18}
+            color={listening ? "#ef4444" : "#a1a1aa"}
+          />
+        </Pressable>
         <TextInput
           value={input}
           onChangeText={setInput}
-          placeholder={loading ? "Loading…" : "Message your coach…"}
+          placeholder={
+            loading
+              ? "Loading…"
+              : listening
+                ? "Listening…"
+                : "Message your coach…"
+          }
           placeholderTextColor="#71717a"
           multiline
           editable={!streaming && !loading && !!sessionId}
@@ -434,6 +636,88 @@ function fallbackTitle(userText: string): string {
   const trimmed = userText.trim();
   if (!trimmed) return "New Chat";
   return trimmed.slice(0, 60).trim() || "New Chat";
+}
+
+/**
+ * Fetch the spoken version of `text` from the agent's /speak endpoint,
+ * load it as an expo-av Sound, and start playback. Tears down any
+ * in-flight Sound + temp file first so a slow first turn + fast
+ * second one don't stack two simultaneous playbacks.
+ *
+ * Failures are logged and swallowed — voice playback is enhancement;
+ * an inline error would punish the user for a transient server
+ * blip that doesn't affect the text they already see.
+ */
+async function speakAndPlay(
+  token: string,
+  text: string,
+  soundRef: React.MutableRefObject<Audio.Sound | null>,
+  uriRef: React.MutableRefObject<string | null>,
+): Promise<void> {
+  // Tear down any in-flight playback first.
+  const prevSound = soundRef.current;
+  const prevUri = uriRef.current;
+  soundRef.current = null;
+  uriRef.current = null;
+  if (prevSound) {
+    try {
+      await prevSound.unloadAsync();
+    } catch {
+      // already unloaded
+    }
+  }
+  if (prevUri) {
+    try {
+      new File(prevUri).delete();
+    } catch {
+      // best-effort
+    }
+  }
+
+  let uri: string;
+  try {
+    uri = await generateChatSpeech(token, text);
+  } catch (err) {
+    console.warn("voice mode: /speak failed", err);
+    return;
+  }
+  uriRef.current = uri;
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      { uri },
+      { shouldPlay: true },
+    );
+    soundRef.current = sound;
+    sound.setOnPlaybackStatusUpdate((status) => {
+      if (!status.isLoaded) return;
+      if (status.didJustFinish) {
+        // Unload + delete on natural completion. The refs may
+        // already point at a newer turn's playback by the time
+        // this fires; only clear them if they still match.
+        sound.unloadAsync().catch(() => {});
+        if (uriRef.current === uri) {
+          try {
+            new File(uri).delete();
+          } catch {
+            // best-effort
+          }
+          uriRef.current = null;
+        }
+        if (soundRef.current === sound) {
+          soundRef.current = null;
+        }
+      }
+    });
+  } catch (err) {
+    console.warn("voice mode: Audio.Sound.createAsync failed", err);
+    // Try to delete the file we wrote since playback never got going.
+    try {
+      new File(uri).delete();
+    } catch {
+      // best-effort
+    }
+    if (uriRef.current === uri) uriRef.current = null;
+  }
 }
 
 /**

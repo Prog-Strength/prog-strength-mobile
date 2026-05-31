@@ -25,7 +25,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Prog Strength uses the microphone to turn spoken workout logs into chat messages.",
+          "speechRecognitionPermission": "Prog Strength uses speech recognition to turn your voice into chat messages without leaving the gym."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
