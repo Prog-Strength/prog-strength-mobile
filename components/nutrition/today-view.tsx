@@ -68,10 +68,9 @@ export function TodayView() {
             router.replace("/login");
             return;
           }
-          const since = d.toISOString();
-          const until = endOfLocalDay(d).toISOString();
+          const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
           const [log, p, r, mg] = await Promise.all([
-            listNutritionLog(t, { since, until }),
+            listNutritionLog(t, { date: toLocalYMD(d), timezone }),
             listPantryItems(t),
             listRecipes(t),
             getMacroGoals(t),
@@ -521,8 +520,11 @@ function startOfLocalDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
 
-function endOfLocalDay(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0);
+function toLocalYMD(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function sameLocalDay(a: Date, b: Date): boolean {

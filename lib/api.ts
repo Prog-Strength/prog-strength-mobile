@@ -538,7 +538,7 @@ export type UpdateLogEntryPayload = {
 
 /** Per-day aggregate from GET /nutrition-log/daily. */
 export type DailyMacros = {
-  date: string; // YYYY-MM-DD UTC
+  date: string; // YYYY-MM-DD user-local calendar date
   calories: number;
   protein_g: number;
   fat_g: number;
@@ -634,17 +634,37 @@ export async function deletePantryItem(
 }
 
 /**
- * GET /nutrition-log. Optional since/until are RFC3339 UTC bounds on
- * `consumed_at`. Returns most-recent-first.
+ * Date filter for the nutrition read endpoints. `timezone` is the IANA
+ * name (e.g. "America/New_York") and is always sent; the server resolves
+ * the user-local calendar day(s) against it. Provide either a single
+ * `date` or an inclusive `startDate`/`endDate` range (all YYYY-MM-DD).
+ */
+export type NutritionDateQuery = {
+  timezone: string;
+  date?: string; // YYYY-MM-DD
+  startDate?: string; // YYYY-MM-DD inclusive
+  endDate?: string; // YYYY-MM-DD inclusive
+};
+
+function nutritionDateParams(query: NutritionDateQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set("timezone", query.timezone);
+  if (query.date) params.set("date", query.date);
+  if (query.startDate) params.set("start_date", query.startDate);
+  if (query.endDate) params.set("end_date", query.endDate);
+  return params;
+}
+
+/**
+ * GET /nutrition-log. Filters `consumed_at` to the user-local calendar
+ * day(s) named by `query` (resolved server-side against `timezone`).
+ * Returns most-recent-first.
  */
 export async function listNutritionLog(
   token: string,
-  options: { since?: string; until?: string } = {},
+  query: NutritionDateQuery,
 ): Promise<NutritionLogEntry[]> {
-  const params = new URLSearchParams();
-  if (options.since) params.set("since", options.since);
-  if (options.until) params.set("until", options.until);
-  const qs = params.toString();
+  const qs = nutritionDateParams(query).toString();
   const resp = await fetch(
     `${config.apiUrl}/nutrition-log${qs ? `?${qs}` : ""}`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -713,18 +733,18 @@ export async function deleteNutritionLogEntry(
 }
 
 /**
- * GET /nutrition-log/daily. Returns one row per UTC calendar date in
- * the [since, until) range that has at least one entry. Empty days
- * are omitted; the frontend's daily widget treats that as zeros.
+ * GET /nutrition-log/daily. Returns one row per user-local calendar
+ * date (resolved server-side against `timezone`) in the requested range
+ * that has at least one entry. Empty days are omitted; the frontend's
+ * daily widget treats that as zeros.
  */
 export async function getDailyMacros(
   token: string,
-  since: string,
-  until: string,
+  query: NutritionDateQuery,
 ): Promise<DailyMacros[]> {
-  const params = new URLSearchParams({ since, until });
+  const qs = nutritionDateParams(query).toString();
   const resp = await fetch(
-    `${config.apiUrl}/nutrition-log/daily?${params.toString()}`,
+    `${config.apiUrl}/nutrition-log/daily?${qs}`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   return unwrap<DailyMacros[]>(resp, []);
