@@ -128,7 +128,7 @@ function PRCard({ record }: { record: PersonalRecord }) {
 
   const onPress = () => {
     if (hasPR && record.workout_id) {
-      router.push(`/workouts/${record.workout_id}`);
+      router.push(`/activities/workout/${record.workout_id}`);
     }
   };
 

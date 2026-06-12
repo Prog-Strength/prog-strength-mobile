@@ -3,7 +3,7 @@
 // and information-light (a dot under each day that has a workout),
 // the agenda below carries the detail. Tapping a day moves the
 // selection + scrolls the agenda; tapping a workout in the agenda
-// pushes the existing /workouts/[id] detail screen.
+// pushes the existing /activities/workout/[id] detail screen.
 //
 // All date math is local-time (per the SOW's TZ decision). The API
 // query uses UTC bounds derived from the local-day boundaries of the
@@ -162,7 +162,7 @@ export default function CalendarScreen() {
         workouts={selectedDayWorkouts}
         exerciseByID={exerciseByID}
         loading={loading}
-        onPressWorkout={(id) => router.push(`/workouts/${id}`)}
+        onPressWorkout={(id) => router.push(`/activities/workout/${id}`)}
       />
     </View>
   );

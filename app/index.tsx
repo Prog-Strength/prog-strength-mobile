@@ -23,5 +23,5 @@ export default function Index() {
       </View>
     );
   }
-  return <Redirect href={authed ? "/workouts" : "/login"} />;
+  return <Redirect href={authed ? "/activities" : "/login"} />;
 }

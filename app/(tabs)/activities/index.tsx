@@ -148,7 +148,7 @@ export default function WorkoutsListScreen() {
         <WorkoutRow
           workout={item}
           exerciseByID={exerciseByID}
-          onPress={() => router.push(`/workouts/${item.id}`)}
+          onPress={() => router.push(`/activities/workout/${item.id}`)}
         />
       )}
     />
