@@ -9,7 +9,8 @@
 //   - Y-axis percent labels (25%, 50%, 75%, …)
 //   - X-axis date labels at evenly-spaced positions
 //   - Dashed reference line at y=1.0 ("current baseline")
-//   - Dashed trendline through the regression endpoints
+//   - One dashed trendline per exercise (where slope data exists),
+//     each colored to match its exercise's scatter points
 //   - One <Circle> per data point, colored per exercise
 //
 // Web's recharts uses hover tooltips; touch doesn't have hover, so we
@@ -18,7 +19,7 @@
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from "react-native-svg";
-import type { ExerciseBaseline, MuscleGroupProgressionPoint, Trendline } from "@/lib/api";
+import type { ExerciseBaseline, MuscleGroupProgressionPoint, PerExerciseTrend } from "@/lib/api";
 import { niceXTicks, niceYTicksPercent } from "@/components/charts/ticks";
 
 const DEFAULT_HEIGHT = 240;
@@ -32,7 +33,6 @@ const TAP_RADIUS = 12; // invisible larger hit target
 const COLOR_GRID = "#27272a";
 const COLOR_AXIS = "#a1a1aa";
 const COLOR_REF = "#71717a";
-const COLOR_TREND = "#3b82f6";
 const COLOR_BG = "#18181b";
 
 // Same palette as the web Progress page so a user toggling between
@@ -58,14 +58,14 @@ export function exerciseColorMap(baselines: ExerciseBaseline[]): Map<string, str
 
 export function ProgressionChart({
   points,
-  trendline,
+  trends,
   baselines,
   selectedPointKey,
   onSelectPoint,
   height = DEFAULT_HEIGHT,
 }: {
   points: MuscleGroupProgressionPoint[];
-  trendline: Trendline | null;
+  trends: PerExerciseTrend[];
   baselines: ExerciseBaseline[];
   selectedPointKey: string | null;
   onSelectPoint: (p: MuscleGroupProgressionPoint | null) => void;
@@ -75,34 +75,44 @@ export function ProgressionChart({
 
   const colorMap = useMemo(() => exerciseColorMap(baselines), [baselines]);
 
-  // Time domain spans the points + trendline endpoints so the regression
-  // line never extends past the X axis.
+  // Collect all trendlines that have endpoint data so we can fold
+  // them into domain math and rendering.
+  const activeTrends = useMemo(() => trends.filter((t) => t.trendline !== null), [trends]);
+
+  // Time domain spans the points + all trendline endpoints so no
+  // regression line extends past the X axis.
   const xDomain = useMemo<[number, number] | null>(() => {
     if (points.length === 0) return null;
     const xs = points.map((p) => new Date(p.performed_at).getTime());
-    if (trendline) {
-      xs.push(new Date(trendline.start_at).getTime());
-      xs.push(new Date(trendline.end_at).getTime());
+    for (const t of activeTrends) {
+      if (t.trendline) {
+        xs.push(new Date(t.trendline.start_at).getTime());
+        xs.push(new Date(t.trendline.end_at).getTime());
+      }
     }
     const min = Math.min(...xs);
     const max = Math.max(...xs);
     // Guard the all-same-day case so we still draw something.
     if (min === max) return [min - 86_400_000, max + 86_400_000];
     return [min, max];
-  }, [points, trendline]);
+  }, [points, activeTrends]);
 
-  // Y domain: include all normalized values + the trendline endpoints
+  // Y domain: include all normalized values + all trendline endpoints
   // + 1.0 (so the baseline reference line is always visible), pad by
   // 15% so dots at the extremes aren't clipped.
   const yDomain = useMemo<[number, number]>(() => {
     const vals: number[] = points.map((p) => p.normalized_max);
-    if (trendline) vals.push(trendline.start_value, trendline.end_value);
+    for (const t of activeTrends) {
+      if (t.trendline) {
+        vals.push(t.trendline.start_value, t.trendline.end_value);
+      }
+    }
     vals.push(1.0);
     const min = Math.min(...vals);
     const max = Math.max(...vals);
     const pad = Math.max(0.05, (max - min) * 0.15);
     return [Math.max(0, min - pad), max + pad];
-  }, [points, trendline]);
+  }, [points, activeTrends]);
 
   if (width === 0) {
     return (
@@ -129,10 +139,6 @@ export function ProgressionChart({
   const xTicks = niceXTicks(xMin, xMax, 3);
 
   const refY = yScale(1.0);
-  const trendStartX = trendline ? xScale(new Date(trendline.start_at).getTime()) : null;
-  const trendEndX = trendline ? xScale(new Date(trendline.end_at).getTime()) : null;
-  const trendStartY = trendline ? yScale(trendline.start_value) : null;
-  const trendEndY = trendline ? yScale(trendline.end_value) : null;
 
   return (
     <View
@@ -205,28 +211,35 @@ export function ProgressionChart({
           strokeDasharray="2 4"
         />
 
-        {/* Trendline */}
-        {trendStartX !== null &&
-          trendEndX !== null &&
-          trendStartY !== null &&
-          trendEndY !== null && (
+        {/* Per-exercise dashed trendlines — one per trend where trendline
+            is non-null; stroke = that exercise's color from colorMap */}
+        {activeTrends.map((t) => {
+          if (!t.trendline) return null;
+          const color = colorMap.get(t.exercise_id) ?? "#3b82f6";
+          const x1 = xScale(new Date(t.trendline.start_at).getTime());
+          const y1 = yScale(t.trendline.start_value);
+          const x2 = xScale(new Date(t.trendline.end_at).getTime());
+          const y2 = yScale(t.trendline.end_value);
+          return (
             <Line
-              x1={trendStartX}
-              y1={trendStartY}
-              x2={trendEndX}
-              y2={trendEndY}
-              stroke={COLOR_TREND}
+              key={`trend-${t.exercise_id}`}
+              x1={x1}
+              y1={y1}
+              x2={x2}
+              y2={y2}
+              stroke={color}
               strokeWidth={2}
               strokeDasharray="5 4"
             />
-          )}
+          );
+        })}
 
-        {/* Data points — drawn after the trendline so dots sit on top */}
+        {/* Data points — drawn after the trendlines so dots sit on top */}
         {points.map((p) => {
           const key = `${p.workout_id}:${p.exercise_id}`;
           const cx = xScale(new Date(p.performed_at).getTime());
           const cy = yScale(p.normalized_max);
-          const color = colorMap.get(p.exercise_id) ?? COLOR_TREND;
+          const color = colorMap.get(p.exercise_id) ?? "#3b82f6";
           const selected = key === selectedPointKey;
           return (
             <G key={key}>

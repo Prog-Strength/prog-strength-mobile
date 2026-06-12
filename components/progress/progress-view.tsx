@@ -1,11 +1,10 @@
-// Progress segment inside the Progress tab. Muscle group + timeframe
+// Progress segment inside the Progress tab. Movement-pattern + timeframe
 // selectors at the top, then stat tiles, then the SVG chart with a
 // tap-to-inspect tooltip card below it, then the dual-mode table
 // (1RM estimates × Sets × Reps × Weight).
 //
 // Layout adapted from web /progress:
-//   - Muscle-group pills wrap onto multiple rows on phone widths
-//     (11 groups don't fit horizontally).
+//   - Movement-pattern pills and timeframe pills at the top (two rows).
 //   - Stat tiles are 1×3 column on phones, no breakpoint flip.
 //   - Tables are simplified: no fixed columns / horizontal scroll, just
 //     a stacked card per row. Phone-screen reality.
@@ -20,6 +19,7 @@ import {
   type MuscleGroupProgression,
   type MuscleGroupProgressionPoint,
   type MovementPattern,
+  type PerExerciseTrend,
   type Workout,
 } from "@/lib/api";
 import { exerciseColorMap, ProgressionChart } from "@/components/progress/progression-chart";
@@ -32,16 +32,20 @@ const TIMEFRAMES: { id: Timeframe; label: string; days: number }[] = [
   { id: "90d", label: "90d", days: 90 },
 ];
 
-// TODO(task 4): add MOVEMENT_PATTERNS constant for the pill filter.
+const MOVEMENT_PATTERNS: { id: MovementPattern; label: string }[] = [
+  { id: "push", label: "Push" },
+  { id: "pull", label: "Pull" },
+  { id: "legs", label: "Legs" },
+  { id: "core", label: "Core" },
+  { id: "all", label: "All" },
+];
 
 type TableView = "estimates" | "sets";
-
-// TODO(task 4): replace "all" with the movement-pattern pill selection.
-const DEFAULT_MOVEMENT_PATTERN: MovementPattern = "all";
 
 export function ProgressView() {
   const router = useRouter();
   const [timeframe, setTimeframe] = useState<Timeframe>("90d");
+  const [pattern, setPattern] = useState<MovementPattern>("all");
   const [progression, setProgression] = useState<MuscleGroupProgression | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +68,7 @@ export function ProgressView() {
         setError(null);
         setSelectedPoint(null);
         const [prog, page] = await Promise.all([
-          listProgression(t, DEFAULT_MOVEMENT_PATTERN, sinceISO, untilISO),
+          listProgression(t, pattern, sinceISO, untilISO),
           listWorkouts(t, { since: sinceISO, until: untilISO, limit: 100 }),
         ]);
         setProgression(prog);
@@ -81,11 +85,11 @@ export function ProgressView() {
         setWorkouts([]);
       })
       .finally(() => setLoading(false));
-  }, [timeframe, router]);
+  }, [timeframe, pattern, router]);
 
   return (
     <ScrollView contentContainerClassName="gap-3 px-4 pb-8" keyboardShouldPersistTaps="handled">
-      {/* TODO(task 4): replace with movement-pattern pills */}
+      <MovementPatternPills value={pattern} onChange={setPattern} />
       <TimeframePills value={timeframe} onChange={setTimeframe} />
 
       {error && (
@@ -103,7 +107,9 @@ export function ProgressView() {
       {!loading && progression && progression.points.length === 0 && (
         <View className="rounded-lg border border-border bg-surface p-6">
           <Text className="text-center text-sm font-medium text-foreground">
-            No sessions in this window
+            {pattern === "all"
+              ? "No sessions in this window"
+              : `No ${pattern} sessions in this window`}
           </Text>
           <Text className="mt-1 text-center text-xs text-muted">
             Log a few sessions via chat, or extend the timeframe.
@@ -125,7 +131,38 @@ export function ProgressView() {
 
 // --- selectors ----------------------------------------------------
 
-// TODO(task 4): add MovementPatternPills component here.
+function MovementPatternPills({
+  value,
+  onChange,
+}: {
+  value: MovementPattern;
+  onChange: (v: MovementPattern) => void;
+}) {
+  return (
+    <View className="flex-row gap-2">
+      {MOVEMENT_PATTERNS.map((mp) => {
+        const active = mp.id === value;
+        return (
+          <Pressable
+            key={mp.id}
+            onPress={() => onChange(mp.id)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            // py-2 + hitSlop clears the SOW's 44pt touch-target floor.
+            hitSlop={{ top: 8, bottom: 8 }}
+            className={`rounded-full border px-3 py-2 ${
+              active ? "border-accent bg-accent/15" : "border-border bg-surface"
+            } active:opacity-80`}
+          >
+            <Text className={`text-xs ${active ? "text-foreground" : "text-muted"}`}>
+              {mp.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
 
 function TimeframePills({
   value,
@@ -144,7 +181,9 @@ function TimeframePills({
             onPress={() => onChange(tf.id)}
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
-            className={`rounded-full border px-3 py-1 ${
+            // py-2 + hitSlop clears the SOW's 44pt touch-target floor.
+            hitSlop={{ top: 8, bottom: 8 }}
+            className={`rounded-full border px-3 py-2 ${
               active ? "border-accent bg-accent" : "border-border bg-surface"
             } active:opacity-80`}
           >
@@ -171,12 +210,11 @@ function ProgressionContent({
   selectedPoint: MuscleGroupProgressionPoint | null;
   onSelectPoint: (p: MuscleGroupProgressionPoint | null) => void;
 }) {
-  const { points, exercise_baselines } = progression;
+  const { points, exercise_baselines, per_exercise_trends, aggregate } = progression;
   const colorMap = useMemo(() => exerciseColorMap(exercise_baselines), [exercise_baselines]);
 
-  // Stat tile values. Same definitions as web /progress so the
-  // two implementations agree on what's "best."
-  // TODO(task 4): replace with aggregate.median_slope_per_month tile.
+  // Best session = highest normalized point in the window (most motivating
+  // absolute number on the page). Matches web's definition exactly.
   const bestPoint = useMemo(
     () =>
       points.reduce<MuscleGroupProgressionPoint | null>(
@@ -185,7 +223,18 @@ function ProgressionContent({
       ),
     [points],
   );
-  const exerciseCount = useMemo(() => new Set(points.map((p) => p.exercise_id)).size, [points]);
+
+  // Build a map from exercise_id → trend for O(1) legend lookups.
+  const trendsByExerciseId = useMemo(() => {
+    const m = new Map<string, PerExerciseTrend>();
+    for (const t of per_exercise_trends) m.set(t.exercise_id, t);
+    return m;
+  }, [per_exercise_trends]);
+
+  // "Below threshold" banner: every trend has null slope (not enough
+  // sessions per exercise to fit a regression). Copy from web.
+  const allBelowThreshold =
+    per_exercise_trends.length > 0 && per_exercise_trends.every((t) => t.slope_per_month === null);
 
   const selectedKey = selectedPoint
     ? `${selectedPoint.workout_id}:${selectedPoint.exercise_id}`
@@ -193,21 +242,44 @@ function ProgressionContent({
 
   return (
     <View className="gap-3">
+      {/* Aggregate stat tiles — lifts progressing, median slope, best session */}
       <View className="flex-row gap-2">
-        {/* TODO(task 4): replace with aggregate stat tiles (lifts progressing, median slope, best session). */}
         <StatTile
-          value={bestPoint ? `${formatPercent(bestPoint.normalized_max)}` : "—"}
-          label={bestPoint ? `Best · ${formatDate(bestPoint.performed_at)}` : "Best"}
+          value={
+            aggregate !== null ? `${aggregate.lifts_progressing} / ${aggregate.lifts_tracked}` : "—"
+          }
+          label="Lifts progressing"
+          tone={
+            aggregate !== null
+              ? progressTone(aggregate.lifts_progressing, aggregate.lifts_tracked)
+              : "neutral"
+          }
         />
         <StatTile
-          value={String(exerciseCount)}
-          label={exerciseCount === 1 ? "Exercise" : "Exercises"}
+          value={aggregate !== null ? formatSlope(aggregate.median_slope_per_month) : "—"}
+          label="Median per-exercise slope"
+          tone={aggregate !== null ? slopeTone(aggregate.median_slope_per_month) : "neutral"}
+        />
+        <StatTile
+          value={bestPoint ? `${Math.round(bestPoint.normalized_max * 100)}% of baseline` : "—"}
+          label={
+            bestPoint ? `Best session • ${formatDate(bestPoint.performed_at)}` : "Best session"
+          }
         />
       </View>
 
+      {allBelowThreshold && (
+        <View className="rounded-md border border-border bg-surface px-3 py-2">
+          <Text className="text-xs text-muted">
+            You have at least 3 sessions needed per exercise to fit a trend. Keep logging —
+            direction shows up around session 3.
+          </Text>
+        </View>
+      )}
+
       <ProgressionChart
         points={points}
-        trendline={null /* TODO(task 4): pass per_exercise_trends */}
+        trends={per_exercise_trends}
         baselines={exercise_baselines}
         selectedPointKey={selectedKey}
         onSelectPoint={onSelectPoint}
@@ -221,7 +293,11 @@ function ProgressionContent({
         />
       )}
 
-      <Legend baselines={exercise_baselines} colorMap={colorMap} />
+      <Legend
+        baselines={exercise_baselines}
+        colorMap={colorMap}
+        trendsByExerciseId={trendsByExerciseId}
+      />
 
       <TablesSection
         points={points}
@@ -304,25 +380,41 @@ function SelectedPointCard({
 function Legend({
   baselines,
   colorMap,
+  trendsByExerciseId,
 }: {
   baselines: ExerciseBaseline[];
   colorMap: Map<string, string>;
+  trendsByExerciseId: Map<string, PerExerciseTrend>;
 }) {
   return (
-    <View className="flex-row flex-wrap gap-x-3 gap-y-1">
-      {baselines.map((b) => (
-        <View key={b.exercise_id} className="flex-row items-center gap-1.5">
-          <View
-            style={{ backgroundColor: colorMap.get(b.exercise_id) ?? "#3b82f6" }}
-            className="h-2 w-3 rounded-full"
-          />
-          <Text className="text-[10px] text-muted">
-            {b.exercise_name}
-            {b.baseline > 0 ? ` · ${formatNumber(b.baseline)} ${b.unit}` : ""}
-          </Text>
-        </View>
-      ))}
-      <Text className="text-[10px] uppercase tracking-wider text-muted">Dashed = trend</Text>
+    <View className="flex-row flex-wrap gap-x-3 gap-y-1.5">
+      {baselines.map((b) => {
+        const trend = trendsByExerciseId.get(b.exercise_id);
+        const dir = directionLabel(trend);
+        const slopeClass =
+          dir.tone === "positive"
+            ? "text-emerald-300"
+            : dir.tone === "negative"
+              ? "text-danger"
+              : "text-muted";
+        return (
+          <View key={b.exercise_id} className="flex-row items-center gap-1.5">
+            <View
+              style={{ backgroundColor: colorMap.get(b.exercise_id) ?? "#3b82f6" }}
+              className="h-2 w-3 rounded-full"
+            />
+            <Text className="text-[10px] text-muted">
+              {b.exercise_name}
+              {b.baseline > 0 ? ` · baseline ${formatNumber(b.baseline)} ${b.unit}` : ""}
+              {"  "}
+              <Text className={`text-[10px] ${slopeClass}`}>
+                {dir.arrow ? `${dir.arrow} ` : ""}
+                {dir.text}
+              </Text>
+            </Text>
+          </View>
+        );
+      })}
     </View>
   );
 }
@@ -637,7 +729,61 @@ function formatPercent(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
-// TODO(task 4): formatChange will be reintroduced for the median slope tile.
+/**
+ * Signed one-decimal percent-per-month slope, e.g. "+1.4%/mo" / "−0.8%/mo".
+ * Mirrors web's StatCards.formatSlope exactly (same sign/precision handling).
+ * null or non-finite → "—".
+ */
+function formatSlope(slope: number | null): string {
+  if (slope === null || !Number.isFinite(slope)) return "—";
+  const sign = slope > 0 ? "+" : "";
+  return `${sign}${slope.toFixed(1)}%/mo`;
+}
+
+/**
+ * Tone for the "Lifts progressing" tile.
+ * positive ≥ 0.5, negative ≤ 0.25, neutral in between.
+ */
+function progressTone(progressing: number, tracked: number): "positive" | "negative" | "neutral" {
+  if (tracked <= 0) return "neutral";
+  const ratio = progressing / tracked;
+  if (ratio >= 0.5) return "positive";
+  if (ratio <= 0.25) return "negative";
+  return "neutral";
+}
+
+/**
+ * Tone for the median slope tile. ±0.5 %/mo band matches legend thresholds.
+ */
+function slopeTone(slope: number | null): "positive" | "negative" | "neutral" {
+  if (slope === null) return "neutral";
+  if (slope > 0.5) return "positive";
+  if (slope < -0.5) return "negative";
+  return "neutral";
+}
+
+type Direction = {
+  arrow: "↑" | "→" | "↓" | null;
+  text: string;
+  tone: "positive" | "negative" | "neutral";
+};
+
+/**
+ * Map a per-exercise trend to its legend direction indicator.
+ * Mirrors web's ProgressChart.directionLabel exactly (±0.5 thresholds).
+ */
+function directionLabel(trend: PerExerciseTrend | undefined): Direction {
+  const slope = trend?.slope_per_month ?? null;
+  if (slope === null || !Number.isFinite(slope)) {
+    return { arrow: null, text: "not enough data", tone: "neutral" };
+  }
+  const sign = slope > 0 ? "+" : slope < 0 ? "−" : "";
+  const magnitude = Math.abs(slope).toFixed(1);
+  const text = `${sign}${magnitude}%/mo`;
+  if (slope > 0.5) return { arrow: "↑", text, tone: "positive" };
+  if (slope < -0.5) return { arrow: "↓", text, tone: "negative" };
+  return { arrow: "→", text, tone: "neutral" };
+}
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
