@@ -42,6 +42,13 @@
           "imageWidth": 160,
           "resizeMode": "contain"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Prog Strength uses your photo library to set a profile picture and to log meals from photos.",
+          "cameraPermission": "Prog Strength uses the camera to log meals from photos."
+        }
       ]
     ],
     "experiments": {
