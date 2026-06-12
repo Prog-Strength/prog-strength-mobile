@@ -209,23 +209,24 @@ there's a reason; Internal TestFlight covers personal use forever
 
 ## Releasing
 
-Two release paths, both driven by `.github/workflows/release.yml`:
+Fully automatic — `.github/workflows/release.yml` decides on every
+merge to `main`:
 
-### JS-only changes (the common case)
+- **JS-only change** (fingerprint unchanged): `eas update` publishes
+  an OTA bundle; the app fetches it on next launch (~30s). Roll back
+  with `npx eas-cli update:republish --branch production`.
+- **Native change** (new native module, config plugin, SDK upgrade —
+  i.e. the fingerprint has no existing build): `eas build
+  --auto-submit` cuts a new TestFlight build automatically. Install it
+  from the TestFlight app (enable TestFlight auto-updates and even
+  that is hands-off). No version bumps needed —
+  `runtimeVersion.policy: fingerprint` guarantees OTA updates only
+  ever target binaries with matching native state.
 
-Merge to `main`. CI runs `eas update --branch production` and the new
-bundle is fetched on next app launch (~30s). No build, no review, no
-version bump. Roll back by re-publishing the previous update:
-`npx eas-cli update:republish --branch production`.
-
-### Native changes (new native module, app.json plugin, SDK upgrade)
-
-OTA cannot ship these — `runtimeVersion.policy: appVersion` pins JS
-updates to the installed binary. Bump `version` in `app.json`, then run
-the release workflow manually (Actions → release → Run workflow →
-`build=true`, `profile=production`). EAS builds in the cloud and
-submits to TestFlight Internal Testing (no App Review for internal
-testers). Install the new build from the TestFlight app.
+The only remaining manual step: TestFlight builds expire after 90
+days, and an expiry refresh changes nothing in the fingerprint — force
+one with Actions → release → Run workflow → `build=true`,
+`profile=production`.
 
 ### One-time setup (already done — recorded for disaster recovery)
 
