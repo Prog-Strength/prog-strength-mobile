@@ -205,3 +205,34 @@ there's a reason; Internal TestFlight covers personal use forever
 | EAS Build         | per build      | free up to ~30/month for personal use |
 | EAS Update        | per OTA push   | free for hobby tier |
 | App Store listing | one-time       | included in $99 |
+
+## Releasing
+
+Two release paths, both driven by `.github/workflows/release.yml`:
+
+### JS-only changes (the common case)
+
+Merge to `main`. CI runs `eas update --branch production` and the new
+bundle is fetched on next app launch (~30s). No build, no review, no
+version bump. Roll back by re-publishing the previous update:
+`npx eas-cli update:republish --branch production`.
+
+### Native changes (new native module, app.json plugin, SDK upgrade)
+
+OTA cannot ship these — `runtimeVersion.policy: appVersion` pins JS
+updates to the installed binary. Bump `version` in `app.json`, then run
+the release workflow manually (Actions → release → Run workflow →
+`build=true`, `profile=production`). EAS builds in the cloud and
+submits to TestFlight Internal Testing (no App Review for internal
+testers). Install the new build from the TestFlight app.
+
+### One-time setup (already done — recorded for disaster recovery)
+
+1. `npx eas-cli login` (Expo account `jwallace145`)
+2. `npx eas-cli credentials` → EAS-managed iOS cert + provisioning
+   profile against the Apple Developer account; App Store Connect app
+   record for `fitness.progstrength.app`
+3. Expo access token → `EXPO_TOKEN` secret on this repo
+4. First build: `eas build --platform ios --profile preview`, install
+   via the EAS link, smoke test; then `--profile production` to reach
+   TestFlight
