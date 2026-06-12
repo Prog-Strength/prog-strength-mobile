@@ -33,7 +33,23 @@
           "speechRecognitionPermission": "Prog Strength uses speech recognition to turn your voice into chat messages without leaving the gym."
         }
       ],
-      "expo-audio"
+      "expo-audio",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0a0a0b",
+          "image": "./assets/icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Prog Strength uses your photo library to set a profile picture and to log meals from photos.",
+          "cameraPermission": "Prog Strength uses the camera to log meals from photos."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

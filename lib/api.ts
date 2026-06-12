@@ -1192,3 +1192,137 @@ async function unwrap<T>(resp: Response, empty: T): Promise<T> {
   const body = await resp.json();
   return (body?.data as T | undefined) ?? empty;
 }
+
+// --- Profile + usage (/me) ---------------------------------------
+
+/**
+ * The resolved profile returned by the four /me profile endpoints
+ * (GET/PATCH /me, POST/DELETE /me/avatar). `avatar_url` is resolved
+ * server-side (presigned S3 GET, OAuth fallback, or null); `height_cm`
+ * is the canonical centimeter value. Sibling: prog-strength-web
+ * lib/api.ts ResolvedProfile.
+ */
+export type ResolvedProfile = {
+  id: string;
+  email: string;
+  display_name: string;
+  weight_unit: "lb" | "kg";
+  distance_unit: "mi" | "km";
+  height_cm: number | null;
+  avatar_url: string | null;
+};
+
+/** Partial profile update for PATCH /me; omit a field to leave it unchanged. */
+export type ProfilePatch = {
+  display_name?: string;
+  // Canonical centimeters; pass `null` to clear a previously-set height.
+  height_cm?: number | null;
+  weight_unit?: "lb" | "kg";
+  distance_unit?: "mi" | "km";
+};
+
+/**
+ * GET /me. Returns the resolved profile — preferences plus `height_cm`
+ * and a server-resolved `avatar_url`; seeds the profile context and
+ * unit-aware displays. Throws if the response carries no user payload.
+ */
+export async function getMe(token: string): Promise<ResolvedProfile> {
+  const resp = await fetch(`${config.apiUrl}/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const got = await unwrap<ResolvedProfile | null>(resp, null);
+  if (!got) throw new Error("user not found");
+  return got;
+}
+
+/** PATCH /me. Returns the updated profile so callers can re-seed state. */
+export async function updateMe(
+  token: string,
+  patch: ProfilePatch,
+): Promise<ResolvedProfile> {
+  const resp = await fetch(`${config.apiUrl}/me`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(patch),
+  });
+  const updated = await unwrap<ResolvedProfile | null>(resp, null);
+  if (!updated) throw new Error("API did not return the updated user");
+  return updated;
+}
+
+/**
+ * A local image picked for avatar upload. RN's FormData takes a
+ * {uri, name, type} part instead of a browser File — this is the
+ * deliberate divergence from the web twin.
+ */
+export type PickedImage = {
+  uri: string;
+  // e.g. "image/jpeg" — the server accepts image/png, image/jpeg,
+  // image/webp and enforces the 2 MB cap authoritatively.
+  mimeType: string;
+  fileName: string;
+};
+
+/**
+ * POST /me/avatar as multipart/form-data under the field `file`.
+ * No Content-Type header — fetch fills in `multipart/form-data;
+ * boundary=...` itself; setting it manually would omit the boundary
+ * and break server-side parsing. Same rule as the web twin.
+ */
+export async function uploadAvatar(
+  token: string,
+  image: PickedImage,
+): Promise<ResolvedProfile> {
+  const form = new FormData();
+  form.append("file", {
+    uri: image.uri,
+    name: image.fileName,
+    type: image.mimeType,
+  } as unknown as Blob);
+  const resp = await fetch(`${config.apiUrl}/me/avatar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const updated = await unwrap<ResolvedProfile | null>(resp, null);
+  if (!updated) throw new Error("API did not return the updated profile");
+  return updated;
+}
+
+/** DELETE /me/avatar. avatar_url falls back to the OAuth photo or null. */
+export async function deleteAvatar(token: string): Promise<ResolvedProfile> {
+  const resp = await fetch(`${config.apiUrl}/me/avatar`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const updated = await unwrap<ResolvedProfile | null>(resp, null);
+  if (!updated) throw new Error("API did not return the updated profile");
+  return updated;
+}
+
+/**
+ * The authed user's daily AI-usage snapshot. Percent only — the API
+ * deliberately omits dollar figures. `capped` gates the chat composer;
+ * `resets_at` (RFC3339) is the user's next local midnight.
+ */
+export type UsageData = {
+  percent_used: number;
+  capped: boolean;
+  resets_at: string;
+};
+
+/** GET /me/usage. `tz` is the user's IANA timezone for rollover anchoring. */
+export async function getMyUsage(token: string, tz: string): Promise<UsageData> {
+  const resp = await fetch(
+    `${config.apiUrl}/me/usage?tz=${encodeURIComponent(tz)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return unwrap<UsageData>(resp, {
+    percent_used: 0,
+    capped: false,
+    resets_at: "",
+  });
+}

@@ -15,11 +15,16 @@ import { useEffect, useState } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getToken } from "@/lib/auth";
+import { AvatarButton } from "@/components/avatar-button";
 import { ExerciseCatalogProvider } from "@/components/exercise-catalog-context";
+import { useProfile } from "@/lib/profile-context";
+import { useUsage } from "@/lib/usage-context";
 
 export default function TabsLayout() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const { profile, refresh: refreshProfile } = useProfile();
+  const { refresh: refreshUsage } = useUsage();
 
   useEffect(() => {
     getToken().then((t) => {
@@ -27,8 +32,14 @@ export default function TabsLayout() {
         router.replace("/login");
       } else {
         setReady(true);
+        // First fetch for the shared contexts. Profile is guarded so a
+        // re-mount of the tab tree doesn't double-fetch a warm one;
+        // usage is advisory and date-scoped, so always re-snapshot it.
+        if (!profile) void refreshProfile();
+        void refreshUsage();
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per mount
   }, [router]);
 
   if (!ready) return null;
@@ -46,6 +57,7 @@ export default function TabsLayout() {
         headerTitleStyle: { color: "#fafafa" },
         headerTintColor: "#fafafa",
         headerShadowVisible: false,
+        headerRight: () => <AvatarButton />,
         tabBarStyle: {
           backgroundColor: "#0a0a0b",
           borderTopColor: "#27272a",

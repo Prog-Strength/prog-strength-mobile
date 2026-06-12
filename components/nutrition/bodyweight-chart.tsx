@@ -7,6 +7,11 @@
 // dots (lower opacity) so the morning + evening spread on a single
 // day is visible context for the trend line rather than competing
 // with it. See prog-strength-docs/sows/bodyweight-multi-per-day.md.
+//
+// The `unit` prop is the *display* unit (the user's preference,
+// resolved by the parent). Each entry's weight is converted from its
+// as-logged unit into `unit` before charting — stored values are
+// never rewritten.
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Svg, {
@@ -17,6 +22,7 @@ import Svg, {
   Text as SvgText,
 } from "react-native-svg";
 import type { BodyweightEntry } from "@/lib/api";
+import { convertWeight } from "@/lib/units";
 
 const DEFAULT_HEIGHT = 200;
 const PADDING_LEFT = 36;
@@ -31,14 +37,7 @@ const COLOR_AXIS = "#a1a1aa";
 const COLOR_LINE = "#3b82f6";
 const COLOR_BG = "#18181b";
 
-const LB_PER_KG = 2.2046226218;
-
 export type Unit = "lb" | "kg";
-
-export function convertWeight(weight: number, from: Unit, to: Unit): number {
-  if (from === to) return weight;
-  return from === "kg" ? weight * LB_PER_KG : weight / LB_PER_KG;
-}
 
 export type BodyweightStats = {
   count: number;
@@ -202,6 +201,18 @@ export function BodyweightChart({
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
     >
       <Svg width={width} height={height}>
+        {/* Y-axis unit label — shows the preferred display unit so
+            the reader knows the scale without inspecting stat tiles. */}
+        <SvgText
+          x={PADDING_LEFT - 6}
+          y={PADDING_TOP - 2}
+          fill={COLOR_AXIS}
+          fontSize={9}
+          textAnchor="end"
+        >
+          {unit}
+        </SvgText>
+
         {/* Y grid + labels */}
         {yTicks.map((t) => {
           const y = yScale(t);
