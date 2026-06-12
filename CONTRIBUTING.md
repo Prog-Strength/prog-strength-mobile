@@ -87,8 +87,13 @@ no horizontally-scrolling charts).
 
 ## Native modules
 
-Adding one is fine, but say so explicitly in the PR description: the
-merge will produce a ~30-minute TestFlight build instead of a ~30-second
-OTA update, and voice features should be re-smoke-tested on the device
-afterward. Run `npx expo install <pkg>` (never bare `npm install`) so
-the version matches the SDK.
+Adding one is fine, but three things must ride in the same PR:
+
+1. Install with `npx expo install <pkg>` (never bare `npm install`) so
+   the version matches the SDK.
+2. Bump `runtimeVersion` in app.json (plain counter) and run
+   `npm run fingerprint:update` — CI's native fingerprint guard fails
+   the PR if you forget.
+3. Say so in the PR description: the merge produces a ~30-minute
+   TestFlight build instead of a ~30-second OTA update, and voice
+   features should be re-smoke-tested on the device afterward.

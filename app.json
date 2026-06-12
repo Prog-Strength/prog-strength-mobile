@@ -58,9 +58,7 @@
       }
     },
     "owner": "jwallace145",
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "1",
     "updates": {
       "url": "https://u.expo.dev/275c4bcf-ad2d-4d06-a467-21e4c238ec86"
     }

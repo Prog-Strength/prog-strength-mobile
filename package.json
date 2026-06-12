@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
-    "eas-build-on-error": "node scripts/fingerprint-debug.js"
+    "fingerprint:check": "node scripts/native-fingerprint.js check",
+    "fingerprint:update": "node scripts/native-fingerprint.js update"
   },
   "dependencies": {
     "expo": "~55.0.26",

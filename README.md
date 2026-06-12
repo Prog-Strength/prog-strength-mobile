@@ -212,21 +212,28 @@ there's a reason; Internal TestFlight covers personal use forever
 Fully automatic — `.github/workflows/release.yml` decides on every
 merge to `main`:
 
-- **JS-only change** (fingerprint unchanged): `eas update` publishes
-  an OTA bundle; the app fetches it on next launch (~30s). Roll back
-  with `npx eas-cli update:republish --branch production`.
-- **Native change** (new native module, config plugin, SDK upgrade —
-  i.e. the fingerprint has no existing build): `eas build
---auto-submit` cuts a new TestFlight build automatically. Install it
-  from the TestFlight app (enable TestFlight auto-updates and even
-  that is hands-off). No version bumps needed —
-  `runtimeVersion.policy: fingerprint` guarantees OTA updates only
-  ever target binaries with matching native state.
+The router checks whether a finished build exists for app.json's
+`runtimeVersion` (a literal string):
+
+- **JS-only change** (a build exists): `eas update` publishes an OTA
+  bundle; the app fetches it on next launch (~30s). Roll back with
+  `npx eas-cli update:republish --branch production`.
+- **Native change** (the PR bumped `runtimeVersion`, so no build
+  exists yet): `eas build --auto-submit` cuts a new TestFlight build
+  automatically. Install it from the TestFlight app (enable TestFlight
+  auto-updates and even that is hands-off).
+
+The bump is enforced, not remembered: CI's **native fingerprint
+guard** compares `expo-updates fingerprint:generate` against the
+committed `.native-fingerprint` and fails any PR that changes native
+state without bumping `runtimeVersion` and running
+`npm run fingerprint:update`. (The fingerprint is deliberately NOT the
+runtime version itself — the EAS builder recomputes it mid-build and
+diverges from CI, failing every build; see expo/expo#43831.)
 
 The only remaining manual step: TestFlight builds expire after 90
-days, and an expiry refresh changes nothing in the fingerprint — force
-one with Actions → release → Run workflow → `build=true`,
-`profile=production`.
+days, and an expiry refresh changes nothing — force one with Actions →
+release → Run workflow → `build=true`, `profile=production`.
 
 ### One-time setup (already done — recorded for disaster recovery)
 
