@@ -19,6 +19,7 @@ import {
   type ExerciseBaseline,
   type MuscleGroupProgression,
   type MuscleGroupProgressionPoint,
+  type MovementPattern,
   type Workout,
 } from "@/lib/api";
 import { exerciseColorMap, ProgressionChart } from "@/components/progress/progression-chart";
@@ -31,25 +32,15 @@ const TIMEFRAMES: { id: Timeframe; label: string; days: number }[] = [
   { id: "90d", label: "90d", days: 90 },
 ];
 
-const MUSCLE_GROUPS: { id: string; label: string }[] = [
-  { id: "chest", label: "Chest" },
-  { id: "back", label: "Back" },
-  { id: "shoulders", label: "Shoulders" },
-  { id: "biceps", label: "Biceps" },
-  { id: "triceps", label: "Triceps" },
-  { id: "core", label: "Core" },
-  { id: "quads", label: "Quads" },
-  { id: "hamstrings", label: "Hamstrings" },
-  { id: "glutes", label: "Glutes" },
-  { id: "calves", label: "Calves" },
-  { id: "forearms", label: "Forearms" },
-];
+// TODO(task 4): add MOVEMENT_PATTERNS constant for the pill filter.
 
 type TableView = "estimates" | "sets";
 
+// TODO(task 4): replace "all" with the movement-pattern pill selection.
+const DEFAULT_MOVEMENT_PATTERN: MovementPattern = "all";
+
 export function ProgressView() {
   const router = useRouter();
-  const [muscleGroup, setMuscleGroup] = useState<string>("chest");
   const [timeframe, setTimeframe] = useState<Timeframe>("90d");
   const [progression, setProgression] = useState<MuscleGroupProgression | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -73,7 +64,7 @@ export function ProgressView() {
         setError(null);
         setSelectedPoint(null);
         const [prog, page] = await Promise.all([
-          listProgression(t, muscleGroup, sinceISO, untilISO),
+          listProgression(t, DEFAULT_MOVEMENT_PATTERN, sinceISO, untilISO),
           listWorkouts(t, { since: sinceISO, until: untilISO, limit: 100 }),
         ]);
         setProgression(prog);
@@ -90,11 +81,11 @@ export function ProgressView() {
         setWorkouts([]);
       })
       .finally(() => setLoading(false));
-  }, [muscleGroup, timeframe, router]);
+  }, [timeframe, router]);
 
   return (
     <ScrollView contentContainerClassName="gap-3 px-4 pb-8" keyboardShouldPersistTaps="handled">
-      <MuscleGroupPills value={muscleGroup} onChange={setMuscleGroup} />
+      {/* TODO(task 4): replace with movement-pattern pills */}
       <TimeframePills value={timeframe} onChange={setTimeframe} />
 
       {error && (
@@ -112,7 +103,7 @@ export function ProgressView() {
       {!loading && progression && progression.points.length === 0 && (
         <View className="rounded-lg border border-border bg-surface p-6">
           <Text className="text-center text-sm font-medium text-foreground">
-            No {muscleGroup} sessions in this window
+            No sessions in this window
           </Text>
           <Text className="mt-1 text-center text-xs text-muted">
             Log a few sessions via chat, or extend the timeframe.
@@ -134,30 +125,7 @@ export function ProgressView() {
 
 // --- selectors ----------------------------------------------------
 
-function MuscleGroupPills({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <View className="flex-row flex-wrap gap-1.5 pt-1">
-      {MUSCLE_GROUPS.map((mg) => {
-        const active = mg.id === value;
-        return (
-          <Pressable
-            key={mg.id}
-            onPress={() => onChange(mg.id)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: active }}
-            className={`rounded-full border px-3 py-1 ${
-              active ? "border-accent bg-accent" : "border-border bg-surface"
-            } active:opacity-80`}
-          >
-            <Text className={`text-xs font-medium ${active ? "text-accent-fg" : "text-muted"}`}>
-              {mg.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
+// TODO(task 4): add MovementPatternPills component here.
 
 function TimeframePills({
   value,
@@ -203,15 +171,12 @@ function ProgressionContent({
   selectedPoint: MuscleGroupProgressionPoint | null;
   onSelectPoint: (p: MuscleGroupProgressionPoint | null) => void;
 }) {
-  const { points, trendline, exercise_baselines } = progression;
+  const { points, exercise_baselines } = progression;
   const colorMap = useMemo(() => exerciseColorMap(exercise_baselines), [exercise_baselines]);
 
   // Stat tile values. Same definitions as web /progress so the
   // two implementations agree on what's "best."
-  const trendPct =
-    trendline && trendline.start_value > 0
-      ? ((trendline.end_value - trendline.start_value) / trendline.start_value) * 100
-      : null;
+  // TODO(task 4): replace with aggregate.median_slope_per_month tile.
   const bestPoint = useMemo(
     () =>
       points.reduce<MuscleGroupProgressionPoint | null>(
@@ -229,19 +194,7 @@ function ProgressionContent({
   return (
     <View className="gap-3">
       <View className="flex-row gap-2">
-        <StatTile
-          value={formatChange(trendPct)}
-          label="Trend"
-          tone={
-            trendPct === null
-              ? "neutral"
-              : trendPct > 0.5
-                ? "positive"
-                : trendPct < -0.5
-                  ? "negative"
-                  : "neutral"
-          }
-        />
+        {/* TODO(task 4): replace with aggregate stat tiles (lifts progressing, median slope, best session). */}
         <StatTile
           value={bestPoint ? `${formatPercent(bestPoint.normalized_max)}` : "—"}
           label={bestPoint ? `Best · ${formatDate(bestPoint.performed_at)}` : "Best"}
@@ -254,7 +207,7 @@ function ProgressionContent({
 
       <ProgressionChart
         points={points}
-        trendline={trendline}
+        trendline={null /* TODO(task 4): pass per_exercise_trends */}
         baselines={exercise_baselines}
         selectedPointKey={selectedKey}
         onSelectPoint={onSelectPoint}
@@ -684,11 +637,7 @@ function formatPercent(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 
-function formatChange(pct: number | null): string {
-  if (pct === null || !Number.isFinite(pct)) return "—";
-  const sign = pct > 0 ? "+" : "";
-  return `${sign}${pct.toFixed(1)}%`;
-}
+// TODO(task 4): formatChange will be reintroduced for the median slope tile.
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, {
