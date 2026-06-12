@@ -1477,3 +1477,131 @@ export async function importRunningTcx(token: string, file: PickedFile): Promise
   if (!got) throw new Error("API did not return the imported activity");
   return got;
 }
+
+// --- Running best efforts + progression history ------------------
+//
+// "Best efforts" are running PRs: the fastest window of each standard
+// distance (1mi, 2mi, 5K, 10K, half marathon, marathon) found inside any
+// of the user's running activities — including a fast segment embedded in
+// a longer run. The API stays metric (distance in meters, pace in
+// seconds-per-kilometer); the DistanceUnitContext converts toward the
+// user's preferred unit at render time. See
+// prog-strength-docs/sows/running-best-efforts.md §API Surface.
+
+/**
+ * One running PR row: the user's current best at a single standard
+ * distance, plus the activity that set it. `pace_sec_per_km` is derived
+ * server-side from `duration_seconds / (distance_meters / 1000)`.
+ */
+export type RunningBestEffort = {
+  distance_key: string;
+  distance_label: string;
+  distance_meters: number;
+  duration_seconds: number;
+  pace_sec_per_km: number;
+  activity_id: string;
+  activity_start_time: string; // RFC3339
+};
+
+/**
+ * One point in a distance's progression series — an activity that
+ * achieved a best effort at that distance, with the time it ran.
+ */
+export type BestEffortPoint = {
+  activity_id: string;
+  activity_start_time: string; // RFC3339
+  duration_seconds: number;
+};
+
+/**
+ * Progression history for a single standard distance: every activity that
+ * achieved a best effort at it, ascending by `activity_start_time`, so a
+ * line chart consumes `points` without re-sorting.
+ */
+export type RunningBestEffortHistory = {
+  distance_key: string;
+  distance_label: string;
+  distance_meters: number;
+  points: BestEffortPoint[];
+};
+
+/**
+ * One point in an exercise's estimated-1RM progression series — the max
+ * estimated 1RM across a single workout's sets on that exercise.
+ */
+export type OneRMHistoryPoint = {
+  workout_id: string;
+  performed_at: string; // RFC3339
+  estimated_1rm: number;
+};
+
+/**
+ * Per-exercise estimated-1RM time series. `unit` is the lifter's stored
+ * weight unit for the series; `points` is one entry per workout in which
+ * the exercise was performed, ascending by `performed_at`.
+ */
+export type ExerciseOneRMHistory = {
+  exercise_id: string;
+  exercise_name: string;
+  unit: "lb" | "kg";
+  points: OneRMHistoryPoint[];
+};
+
+/**
+ * GET /running/best-efforts. Returns the authed user's current best across
+ * each standard distance, sorted shortest first. Distances the user has
+ * never covered are omitted from the list.
+ */
+export async function listRunningBestEfforts(token: string): Promise<RunningBestEffort[]> {
+  const resp = await fetch(`${config.apiUrl}/running/best-efforts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const got = await unwrap<{ best_efforts: RunningBestEffort[] }>(resp, { best_efforts: [] });
+  return got.best_efforts ?? [];
+}
+
+/**
+ * GET /running/best-efforts/{distance_key}/history. Returns the
+ * progression series for one standard distance. 404 (surfaced as a thrown
+ * Error) if `distanceKey` isn't a standard distance.
+ */
+export async function getRunningBestEffortHistory(
+  token: string,
+  distanceKey: string,
+): Promise<RunningBestEffortHistory> {
+  const resp = await fetch(
+    `${config.apiUrl}/running/best-efforts/${encodeURIComponent(distanceKey)}/history`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return unwrap<RunningBestEffortHistory>(resp, {
+    distance_key: distanceKey,
+    distance_label: "",
+    distance_meters: 0,
+    points: [],
+  });
+}
+
+/**
+ * GET /personal-records/{exercise_id}/history. Returns the per-workout
+ * estimated-1RM series for one exercise. 404 (surfaced as a thrown Error)
+ * if the slug isn't in the exercise catalog.
+ */
+export async function getExerciseOneRMHistory(
+  token: string,
+  exerciseId: string,
+): Promise<ExerciseOneRMHistory> {
+  const resp = await fetch(
+    `${config.apiUrl}/personal-records/${encodeURIComponent(exerciseId)}/history`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return unwrap<ExerciseOneRMHistory>(resp, {
+    exercise_id: exerciseId,
+    exercise_name: "",
+    unit: "lb",
+    points: [],
+  });
+}
