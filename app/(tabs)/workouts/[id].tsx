@@ -15,11 +15,15 @@ import {
   type WorkoutExercise,
 } from "@/lib/api";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
+import { useProfile } from "@/lib/profile-context";
+import { formatWeight } from "@/lib/units";
 
 export default function WorkoutDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { byID: exerciseByID } = useExerciseCatalog();
+  const { profile } = useProfile();
+  const preferred = profile?.weight_unit;
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -115,7 +119,7 @@ export default function WorkoutDetailScreen() {
                       className="rounded-full border border-accent/40 bg-accent/15 px-3 py-1"
                     >
                       <Text className="text-xs text-foreground">
-                        New PR · {name} · {formatNumber(pr.weight)} {pr.unit}{" "}
+                        New PR · {name} · {formatWeight(pr.weight, pr.unit, preferred ?? pr.unit)}{" "}
                         × {pr.reps}
                       </Text>
                     </View>
@@ -131,12 +135,14 @@ export default function WorkoutDetailScreen() {
                 key={`s:${chunk.we.exercise_id}:${idx}`}
                 we={chunk.we}
                 name={exerciseByID.get(chunk.we.exercise_id)?.name ?? chunk.we.exercise_id}
+                preferred={preferred}
               />
             ) : (
               <SupersetCard
                 key={`ss:${chunk.group}:${idx}`}
                 chunk={chunk}
                 exerciseByID={exerciseByID}
+                preferred={preferred}
               />
             ),
           )}
@@ -180,9 +186,11 @@ function groupBySuperset(exercises: WorkoutExercise[]): ExerciseChunk[] {
 function ExerciseCard({
   we,
   name,
+  preferred,
 }: {
   we: WorkoutExercise;
   name: string;
+  preferred: "lb" | "kg" | undefined;
 }) {
   return (
     <View className="rounded-lg border border-border bg-surface px-4 py-3">
@@ -197,7 +205,7 @@ function ExerciseCard({
       {we.notes && we.notes.trim().length > 0 && (
         <Text className="mt-1 text-xs text-muted">{we.notes}</Text>
       )}
-      <SetList sets={we.sets} />
+      <SetList sets={we.sets} preferred={preferred} />
     </View>
   );
 }
@@ -205,9 +213,11 @@ function ExerciseCard({
 function SupersetCard({
   chunk,
   exerciseByID,
+  preferred,
 }: {
   chunk: { type: "superset"; group: number; exercises: WorkoutExercise[] };
   exerciseByID: Map<string, Exercise>;
+  preferred: "lb" | "kg" | undefined;
 }) {
   const totalSets = chunk.exercises.reduce((n, we) => n + we.sets.length, 0);
   return (
@@ -242,7 +252,7 @@ function SupersetCard({
             {we.notes && we.notes.trim().length > 0 && (
               <Text className="mt-1 text-xs text-muted">{we.notes}</Text>
             )}
-            <SetList sets={we.sets} />
+            <SetList sets={we.sets} preferred={preferred} />
           </View>
         );
       })}
@@ -250,7 +260,13 @@ function SupersetCard({
   );
 }
 
-function SetList({ sets }: { sets: WorkoutExercise["sets"] }) {
+function SetList({
+  sets,
+  preferred,
+}: {
+  sets: WorkoutExercise["sets"];
+  preferred: "lb" | "kg" | undefined;
+}) {
   return (
     <View className="mt-2 gap-1">
       {sets.map((s, i) => (
@@ -260,7 +276,7 @@ function SetList({ sets }: { sets: WorkoutExercise["sets"] }) {
         >
           <Text className="text-xs text-muted">Set {i + 1}</Text>
           <Text className="text-sm tabular-nums text-foreground">
-            {s.reps} × {formatNumber(s.weight)} {s.unit}
+            {s.reps} × {formatWeight(s.weight, s.unit, preferred ?? s.unit)}
           </Text>
         </View>
       ))}
@@ -269,12 +285,6 @@ function SetList({ sets }: { sets: WorkoutExercise["sets"] }) {
 }
 
 // --- helpers ------------------------------------------------------
-
-function formatNumber(v: number): string {
-  if (!Number.isFinite(v)) return "—";
-  const rounded = Math.round(v * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
-}
 
 function formatDateTime(iso: string): string {
   const d = new Date(iso);

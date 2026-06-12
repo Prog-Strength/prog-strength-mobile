@@ -29,6 +29,8 @@ import {
   computeStats,
   type BodyweightStats,
 } from "@/components/nutrition/bodyweight-chart";
+import { useProfile } from "@/lib/profile-context";
+import { formatWeight } from "@/lib/units";
 
 type Unit = "lb" | "kg";
 
@@ -44,6 +46,8 @@ const PAGE_SIZE = 20;
 
 export function BodyweightView() {
   const router = useRouter();
+  const { profile } = useProfile();
+  const preferred: Unit = profile?.weight_unit ?? "lb";
   const [entries, setEntries] = useState<BodyweightEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [weight, setWeight] = useState("");
@@ -69,8 +73,8 @@ export function BodyweightView() {
   }, [entries, range]);
 
   const stats: BodyweightStats | null = useMemo(
-    () => computeStats(entriesInRange, unit),
-    [entriesInRange, unit],
+    () => computeStats(entriesInRange, preferred),
+    [entriesInRange, preferred],
   );
 
   const totalPages = Math.max(
@@ -174,7 +178,7 @@ export function BodyweightView() {
 
       <StatTilesGrid stats={stats} />
 
-      <BodyweightChart entries={entriesInRange} unit={unit} />
+      <BodyweightChart entries={entriesInRange} unit={preferred} />
 
       <View className="gap-2 rounded-lg border border-border bg-surface p-3">
         <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
@@ -228,6 +232,7 @@ export function BodyweightView() {
               <EntryCard
                 key={e.id}
                 entry={e}
+                preferred={preferred}
                 busy={rowBusyID === e.id}
                 onDelete={() => handleDelete(e.id)}
               />
@@ -370,10 +375,12 @@ function StatTile({
 
 function EntryCard({
   entry,
+  preferred,
   busy,
   onDelete,
 }: {
   entry: BodyweightEntry;
+  preferred: Unit;
   busy: boolean;
   onDelete: () => void;
 }) {
@@ -381,8 +388,7 @@ function EntryCard({
     <View className="flex-row items-center justify-between rounded-lg border border-border bg-surface p-3">
       <View className="flex-1">
         <Text className="text-sm font-medium text-foreground tabular-nums">
-          {formatNumber(entry.weight)}{" "}
-          <Text className="text-xs font-normal text-muted">{entry.unit}</Text>
+          {formatWeight(entry.weight, entry.unit, preferred)}
         </Text>
         <Text className="mt-0.5 text-xs text-muted">
           {formatLocalDateTime(entry.measured_at)}
