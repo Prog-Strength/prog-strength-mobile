@@ -97,18 +97,25 @@ conventional commits. CI re-runs all of it on PRs.
 
 ## Releases (you usually don't need to do anything)
 
-`release.yml` runs on every merge to `main` and decides via Expo
-fingerprint (`runtimeVersion.policy: fingerprint`):
+`release.yml` runs on every merge to `main` and routes by whether a
+finished iOS build exists for app.json's `runtimeVersion` (a literal
+string):
 
-- JS-only change → OTA update, on the phone in ~30s.
-- Native change (new native module, config plugin, SDK bump) → EAS
-  build auto-submitted to TestFlight (~30 min).
+- JS-only change (build exists) → OTA update, on the phone in ~30s.
+- Native change (the PR bumped `runtimeVersion`) → EAS build
+  auto-submitted to TestFlight (~30 min).
 
-Consequences for contributors: adding a native module is allowed but
-should be called out in the PR (it triggers a 30-minute build instead
-of an instant OTA); never assume an OTA can deliver native changes.
-No manual version bumps are needed — fingerprint isolation makes
-runtime mismatches structurally impossible.
+**If your change touches native state** (new native module, config
+plugin change, SDK bump): bump `runtimeVersion` in app.json and run
+`npm run fingerprint:update`, committing both in the same PR. You
+can't forget — CI's native fingerprint guard fails the PR otherwise.
+Never assume an OTA can deliver native changes.
+
+(History: `runtimeVersion.policy: fingerprint` was tried and reverted —
+the EAS builder recomputes the fingerprint mid-build and
+deterministically diverges from CI's value, failing every build in the
+Configure expo-updates phase; expo/expo#43831, builds 4-7. Don't
+re-propose it until that's fixed upstream.)
 
 ## Gotchas
 

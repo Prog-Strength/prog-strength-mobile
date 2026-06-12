@@ -1,27 +1,25 @@
 name: Mobile Release
 
-# Fully automatic releases — one decision the pipeline makes itself:
+# Fully automatic releases. Every push to main routes itself:
 #
-#   Every push to main runs continuous-deploy-fingerprint, which
-#   computes the native fingerprint (a hash of everything that affects
-#   the native binary: native deps, config plugins, SDK version) and:
+#   - a finished iOS build already exists for app.json's runtimeVersion
+#     → JS-only change → `eas update`; phones fetch it on next launch.
+#   - no build exists for that runtimeVersion → native change (the PR
+#     bumped runtimeVersion — CI's fingerprint guard enforces that) →
+#     `eas build --auto-submit` → TestFlight, hands-off.
 #
-#     - fingerprint already has an EAS build  → JS-only change →
-#       `eas update` to the production branch; phones pick it up on
-#       next app launch (~30s).
-#     - fingerprint has NO build              → native change →
-#       `eas build --auto-submit` → new TestFlight build, no human
-#       in the loop. The build embeds the current JS bundle.
+# runtimeVersion is a LITERAL string in app.json, bumped in the same
+# PR as any native change. The bump is enforced mechanically: ci.yml
+# compares `expo-updates fingerprint:generate` against the committed
+# .native-fingerprint and fails the PR if native state moved without a
+# bump. We deliberately do NOT use runtimeVersion.policy=fingerprint —
+# the EAS builder recomputes the fingerprint mid-build (post-prebuild,
+# post-pod-install) and deterministically diverges from CI's value,
+# failing every build in the Configure expo-updates phase (see
+# expo/expo#43831; builds 4-7 in this project's history).
 #
-#   runtimeVersion.policy is "fingerprint" (app.json), so an OTA
-#   update can never land on a binary whose native state doesn't
-#   match — the version-bump foot-gun from the appVersion era is
-#   structurally gone. No more manual version bumps for native
-#   changes; `autoIncrement` still handles the build number.
-#
-#   workflow_dispatch with build=true remains as an escape hatch to
-#   FORCE a native build when the fingerprint hasn't changed — needed
-#   for TestFlight's 90-day build expiry, and nothing else.
+# workflow_dispatch with build=true forces a native build when nothing
+# changed — needed for TestFlight's 90-day build expiry, nothing else.
 
 on:
   push:
@@ -29,7 +27,7 @@ on:
   workflow_dispatch:
     inputs:
       build:
-        description: "Force a native build even though the fingerprint hasn't changed (e.g. TestFlight 90-day expiry refresh)"
+        description: "Force a native build even though runtimeVersion is unchanged (e.g. TestFlight 90-day expiry refresh)"
         type: boolean
         default: false
       profile:
@@ -46,8 +44,8 @@ concurrency:
 
 jobs:
   deploy:
-    # The automatic path: every push to main. Decides OTA vs native
-    # build by fingerprint; auto-submits new builds to TestFlight.
+    # Automatic path: every push to main. Routes OTA vs native build by
+    # whether a finished build exists for the literal runtimeVersion.
     if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
@@ -65,18 +63,54 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Continuous deploy (fingerprint)
-        uses: expo/expo-github-action/continuous-deploy-fingerprint@v9
-        with:
-          profile: production
-          branch: production
-          platform: ios
-          auto-submit-builds: true
+      - name: Route by runtime version
+        id: route
+        run: |
+          RUNTIME=$(node -p "require('./app.json').expo.runtimeVersion")
+          echo "runtime=$RUNTIME" >> "$GITHUB_OUTPUT"
+          # eas-cli may write log lines to stdout before the JSON, and
+          # reports some errors on stdout with exit 0 — slice from the
+          # first '[' and hard-fail when there is no JSON array, so a
+          # CLI hiccup fails the run instead of misrouting it.
+          MATCHING=$(eas build:list --platform ios --status finished --limit 50 --json --non-interactive \
+            | node -e "
+              const s = require('fs').readFileSync(0, 'utf8');
+              const i = s.indexOf('[');
+              if (i === -1) { console.error('no JSON from eas build:list:', s); process.exit(1); }
+              const n = JSON.parse(s.slice(i)).filter(b => b.runtimeVersion === '$RUNTIME').length;
+              console.log(n);
+            ")
+          echo "Finished iOS builds for runtime $RUNTIME: $MATCHING"
+          if [ "$MATCHING" -gt 0 ]; then
+            echo "mode=update" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=build" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish OTA update
+        if: ${{ steps.route.outputs.mode == 'update' }}
+        run: |
+          eas update \
+            --branch production \
+            --message "$(git log -1 --pretty=%s)" \
+            --non-interactive
+
+      - name: Native build + TestFlight submit
+        if: ${{ steps.route.outputs.mode == 'build' }}
+        # --no-wait: the job's purpose is to start the right thing; EAS
+        # finishes the build and the auto-submit server-side. A green
+        # run means routing worked, not that the build finished.
+        run: |
+          eas build \
+            --platform ios \
+            --profile production \
+            --auto-submit \
+            --non-interactive \
+            --no-wait
 
   forced-build:
-    # Escape hatch: manual dispatch with build=true. Identical to the
-    # old manual native path; exists only for fingerprint-unchanged
-    # rebuilds (TestFlight 90-day expiry).
+    # Escape hatch: manual dispatch with build=true, for rebuilds with
+    # an unchanged runtimeVersion (TestFlight 90-day expiry).
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build == 'true' }}
     runs-on: ubuntu-latest
     steps:

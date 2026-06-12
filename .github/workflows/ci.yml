@@ -54,6 +54,16 @@ jobs:
         # that fits in CI without a 30-minute EAS build.
         run: npx expo-doctor
 
+      - name: Native fingerprint guard
+        # Fails the PR when native state changed (new native module,
+        # config plugin, SDK bump) but runtimeVersion in app.json
+        # wasn't bumped + .native-fingerprint wasn't regenerated. This
+        # is what keeps OTA updates from targeting binaries with
+        # mismatched native code — see release.yml's header for why
+        # this is a CI-time guard instead of the fingerprint runtime
+        # policy.
+        run: npm run fingerprint:check
+
   conventional-commits:
     name: conventional commits
     if: github.event_name == 'pull_request'
