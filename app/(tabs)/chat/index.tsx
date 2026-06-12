@@ -31,6 +31,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
 import { config } from "@/lib/config";
 import { streamChat } from "@/lib/stream";
+import { useUsage } from "@/lib/usage-context";
 import {
   appendChatTurn,
   createChatSession,
@@ -110,6 +111,9 @@ export default function ChatScreen() {
   // Voice mode: when on, completed assistant turns play back as
   // audio via the agent's /speak endpoint. Off by default and
   // session-scoped (per the voice-chat SOW); resets on tab unmount.
+  const { usage, refresh: refreshUsage } = useUsage();
+  const capped = usage?.capped ?? false;
+
   const [voiceMode, setVoiceMode] = useState(false);
   // True while the user is holding the mic button and the
   // recognizer is listening. Drives the red pulsing visual.
@@ -393,7 +397,7 @@ export default function ChatScreen() {
 
   const send = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || streaming || loading || !sessionId) return;
+    if (!trimmed || streaming || loading || !sessionId || capped) return;
 
     const token = await getToken();
     if (!token) {
@@ -574,6 +578,7 @@ export default function ChatScreen() {
       setError(msg);
     } finally {
       setStreaming(false);
+      void refreshUsage();
     }
   }, [
     input,
@@ -583,9 +588,11 @@ export default function ChatScreen() {
     sessionPersisted,
     loading,
     streaming,
+    capped,
     voiceMode,
     stopPlayback,
     drainAudioQueue,
+    refreshUsage,
   ]);
 
   const startNewChat = () => {
@@ -694,6 +701,14 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {capped && (
+        <View className="mx-4 mb-2 rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
+          <Text className="text-xs text-danger">
+            Daily AI allowance reached — chat resumes after midnight.
+          </Text>
+        </View>
+      )}
+
       <View className="flex-row items-end gap-2 border-t border-border bg-background px-4 py-3">
         {SPEECH_SUPPORTED && (
           // Push-to-talk mic. Pressable's onPressIn/onPressOut is the
@@ -706,7 +721,7 @@ export default function ChatScreen() {
           <Pressable
             onPressIn={startListening}
             onPressOut={stopListening}
-            disabled={streaming || loading || !sessionId}
+            disabled={streaming || loading || !sessionId || capped}
             accessibilityRole="button"
             accessibilityLabel={
               listening ? "Stop voice input" : "Hold to speak"
@@ -737,7 +752,7 @@ export default function ChatScreen() {
           }
           placeholderTextColor="#71717a"
           multiline
-          editable={!streaming && !loading && !!sessionId}
+          editable={!capped && !streaming && !loading && !!sessionId}
           className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground"
           // Cap the input box growth so the send button stays reachable
           // even mid-paragraph. Beyond this it scrolls inside the input.
@@ -746,7 +761,7 @@ export default function ChatScreen() {
         <Pressable
           onPress={send}
           disabled={
-            streaming || loading || !sessionId || input.trim().length === 0
+            capped || streaming || loading || !sessionId || input.trim().length === 0
           }
           accessibilityRole="button"
           className="rounded-lg bg-accent px-4 py-2 active:opacity-80 disabled:opacity-40"
