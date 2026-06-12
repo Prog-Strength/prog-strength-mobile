@@ -16,10 +16,14 @@ import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getToken } from "@/lib/auth";
 import { ExerciseCatalogProvider } from "@/components/exercise-catalog-context";
+import { useProfile } from "@/lib/profile-context";
+import { useUsage } from "@/lib/usage-context";
 
 export default function TabsLayout() {
   const router = useRouter();
   const [ready, setReady] = useState(false);
+  const { profile, refresh: refreshProfile } = useProfile();
+  const { refresh: refreshUsage } = useUsage();
 
   useEffect(() => {
     getToken().then((t) => {
@@ -27,8 +31,15 @@ export default function TabsLayout() {
         router.replace("/login");
       } else {
         setReady(true);
+        // First fetch for the shared contexts. Guarded so a re-mount
+        // of the tab tree doesn't double-fetch a warm profile.
+        if (!profile) {
+          void refreshProfile();
+          void refreshUsage();
+        }
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per mount
   }, [router]);
 
   if (!ready) return null;
