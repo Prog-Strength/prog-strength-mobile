@@ -134,10 +134,7 @@ export function RunningView({ timeframe }: { timeframe: Timeframe }) {
         <RunRow
           run={item}
           unit={unit}
-          onPress={() =>
-            // TODO(task 6): route /activities/run/[id] created in Task 6.
-            router.push(`/activities/run/${item.id}` as never)
-          }
+          onPress={() => router.push(`/activities/run/${item.id}`)}
         />
       )}
     />

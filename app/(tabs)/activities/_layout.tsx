@@ -20,6 +20,7 @@ export default function ActivitiesLayout() {
         options={{ title: "Activities", headerRight: () => <AvatarButton /> }}
       />
       <Stack.Screen name="workout/[id]" options={{ title: "Workout" }} />
+      <Stack.Screen name="run/[id]" options={{ title: "Run" }} />
     </Stack>
   );
 }
