@@ -1,0 +1,11 @@
+node_modules
+.expo
+dist
+ios
+android
+coverage
+*.tsbuildinfo
+package-lock.json
+assets
+.idea
+.DS_Store
