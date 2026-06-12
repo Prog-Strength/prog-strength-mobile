@@ -46,11 +46,7 @@ import {
   startSpeechSession,
   type SpeechSession,
 } from "@/lib/speech";
-import {
-  createPlayer,
-  isAudioPlaybackAvailable,
-  type AudioPlayer,
-} from "@/lib/voice-playback";
+import { createPlayer, isAudioPlaybackAvailable, type AudioPlayer } from "@/lib/voice-playback";
 
 // Feature-detect both native modules once at module load. The chat
 // surface hides the mic button + voice-mode toggle when the running
@@ -337,9 +333,7 @@ export default function ChatScreen() {
     stopPlayback();
     const granted = await ensureSpeechPermissions();
     if (!granted) {
-      setError(
-        "Microphone or speech recognition is blocked. Allow them in Settings.",
-      );
+      setError("Microphone or speech recognition is blocked. Allow them in Settings.");
       return;
     }
     try {
@@ -353,9 +347,7 @@ export default function ChatScreen() {
         },
         onError: (code) => {
           if (code === "not-allowed" || code === "service-not-allowed") {
-            setError(
-              "Microphone or speech recognition is blocked. Allow them in Settings.",
-            );
+            setError("Microphone or speech recognition is blocked. Allow them in Settings.");
           }
           setListening(false);
           speechSessionRef.current = null;
@@ -472,9 +464,7 @@ export default function ChatScreen() {
       })) {
         if (ev.type === "text_delta") {
           assistantText += ev.text;
-          setMessages((prev) =>
-            replaceLast(prev, (last) => ({ ...last, content: assistantText })),
-          );
+          setMessages((prev) => replaceLast(prev, (last) => ({ ...last, content: assistantText })));
         } else if (ev.type === "tool_use_start") {
           toolsLog.push({ name: ev.name, state: "running" });
           setMessages((prev) =>
@@ -505,9 +495,7 @@ export default function ChatScreen() {
           );
         } else if (ev.type === "model_chosen") {
           chosenModel = ev.model;
-          setMessages((prev) =>
-            replaceLast(prev, (last) => ({ ...last, model: ev.model })),
-          );
+          setMessages((prev) => replaceLast(prev, (last) => ({ ...last, model: ev.model })));
         } else if (ev.type === "audio_chunk") {
           // Decode the base64 mp3 to a temp file in the cache dir
           // and push the URI into the playback queue. expo-audio
@@ -516,10 +504,7 @@ export default function ChatScreen() {
           // in the didJustFinish handler inside drainAudioQueue.
           try {
             const bytes = base64ToBytes(ev.mp3_base64);
-            const file = new File(
-              Paths.cache,
-              `chat-chunk-${sessionId}-${ev.index}.mp3`,
-            );
+            const file = new File(Paths.cache, `chat-chunk-${sessionId}-${ev.index}.mp3`);
             file.write(bytes);
             audioQueueRef.current.push(file.uri);
             void drainAudioQueue();
@@ -624,15 +609,11 @@ export default function ChatScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ selected: voiceMode }}
                   accessibilityLabel={
-                    voiceMode
-                      ? "Voice mode on, tap to turn off"
-                      : "Voice mode off, tap to turn on"
+                    voiceMode ? "Voice mode on, tap to turn off" : "Voice mode off, tap to turn on"
                   }
                   hitSlop={6}
                   className={`rounded-full border px-2.5 py-1 active:opacity-80 ${
-                    voiceMode
-                      ? "border-accent bg-accent/15"
-                      : "border-border bg-surface"
+                    voiceMode ? "border-accent bg-accent/15" : "border-border bg-surface"
                   }`}
                 >
                   <Ionicons
@@ -648,9 +629,7 @@ export default function ChatScreen() {
                 hitSlop={6}
                 className="rounded-full border border-border bg-surface px-2.5 py-1 active:opacity-80"
               >
-                <Text className="text-[11px] font-medium text-foreground">
-                  + New
-                </Text>
+                <Text className="text-[11px] font-medium text-foreground">+ New</Text>
               </Pressable>
               <Pressable
                 onPress={openHistory}
@@ -658,9 +637,7 @@ export default function ChatScreen() {
                 hitSlop={6}
                 className="rounded-full border border-border bg-surface px-2.5 py-1 active:opacity-80"
               >
-                <Text className="text-[11px] font-medium text-foreground">
-                  History
-                </Text>
+                <Text className="text-[11px] font-medium text-foreground">History</Text>
               </Pressable>
             </View>
           ),
@@ -687,8 +664,8 @@ export default function ChatScreen() {
             </Text>
             {!loading && (
               <Text className="mt-1 text-center text-xs text-muted">
-                Tell them what you trained today and they&apos;ll log it.
-                Ask about your last back day, your bench progress, whatever.
+                Tell them what you trained today and they&apos;ll log it. Ask about your last back
+                day, your bench progress, whatever.
               </Text>
             )}
           </View>
@@ -723,33 +700,19 @@ export default function ChatScreen() {
             onPressOut={stopListening}
             disabled={streaming || loading || !sessionId || capped}
             accessibilityRole="button"
-            accessibilityLabel={
-              listening ? "Stop voice input" : "Hold to speak"
-            }
+            accessibilityLabel={listening ? "Stop voice input" : "Hold to speak"}
             accessibilityState={{ selected: listening }}
             className={`h-11 w-11 items-center justify-center rounded-lg border active:opacity-80 disabled:opacity-40 ${
-              listening
-                ? "border-danger/60 bg-danger/10"
-                : "border-border bg-surface"
+              listening ? "border-danger/60 bg-danger/10" : "border-border bg-surface"
             }`}
           >
-            <Ionicons
-              name="mic"
-              size={18}
-              color={listening ? "#ef4444" : "#a1a1aa"}
-            />
+            <Ionicons name="mic" size={18} color={listening ? "#ef4444" : "#a1a1aa"} />
           </Pressable>
         )}
         <TextInput
           value={input}
           onChangeText={setInput}
-          placeholder={
-            loading
-              ? "Loading…"
-              : listening
-                ? "Listening…"
-                : "Message your coach…"
-          }
+          placeholder={loading ? "Loading…" : listening ? "Listening…" : "Message your coach…"}
           placeholderTextColor="#71717a"
           multiline
           editable={!capped && !streaming && !loading && !!sessionId}
@@ -760,9 +723,7 @@ export default function ChatScreen() {
         />
         <Pressable
           onPress={send}
-          disabled={
-            capped || streaming || loading || !sessionId || input.trim().length === 0
-          }
+          disabled={capped || streaming || loading || !sessionId || input.trim().length === 0}
           accessibilityRole="button"
           className="rounded-lg bg-accent px-4 py-2 active:opacity-80 disabled:opacity-40"
         >
@@ -852,15 +813,12 @@ function MessageBubble({
   const isUser = message.role === "user";
   // Show the typing dot when this is the still-empty assistant
   // placeholder. Avoids an empty bubble before the first delta lands.
-  const showTyping =
-    isLast && streaming && !isUser && message.content.length === 0;
+  const showTyping = isLast && streaming && !isUser && message.content.length === 0;
 
   return (
     <View
       className={`max-w-[85%] rounded-2xl px-3 py-2 ${
-        isUser
-          ? "self-end bg-accent"
-          : "self-start border border-border bg-surface"
+        isUser ? "self-end bg-accent" : "self-start border border-border bg-surface"
       }`}
     >
       {showTyping ? (
@@ -890,11 +848,7 @@ function MessageBubble({
             <Text
               key={i}
               className={`text-[10px] uppercase tracking-wider ${
-                t.state === "error"
-                  ? "text-danger"
-                  : t.state === "ok"
-                    ? "text-muted"
-                    : "text-muted"
+                t.state === "error" ? "text-danger" : t.state === "ok" ? "text-muted" : "text-muted"
               }`}
             >
               {t.state === "running" ? "Running" : t.state === "ok" ? "Done" : "Failed"}

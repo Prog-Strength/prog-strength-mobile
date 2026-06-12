@@ -66,10 +66,8 @@ export function MacroGoalsSheet({
   const f = parseIntOrNull(fat);
   const k = parseIntOrNull(calories);
 
-  const computedCalories =
-    p !== null && c !== null && f !== null ? p * 4 + c * 4 + f * 9 : null;
-  const delta =
-    computedCalories !== null && k !== null ? k - computedCalories : null;
+  const computedCalories = p !== null && c !== null && f !== null ? p * 4 + c * 4 + f * 9 : null;
+  const delta = computedCalories !== null && k !== null ? k - computedCalories : null;
 
   async function save() {
     if (p === null || c === null || f === null || k === null) {
@@ -116,9 +114,7 @@ export function MacroGoalsSheet({
       >
         <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
           <View className="flex-1">
-            <Text className="text-base font-semibold text-foreground">
-              Set daily goals
-            </Text>
+            <Text className="text-base font-semibold text-foreground">Set daily goals</Text>
             <Text className="text-xs text-muted">
               Targets drive the rings on the Nutrition tab.
             </Text>
@@ -143,20 +139,8 @@ export function MacroGoalsSheet({
             onChange={setProtein}
             disabled={saving}
           />
-          <GoalField
-            label="Carbs"
-            unit="g"
-            value={carbs}
-            onChange={setCarbs}
-            disabled={saving}
-          />
-          <GoalField
-            label="Fat"
-            unit="g"
-            value={fat}
-            onChange={setFat}
-            disabled={saving}
-          />
+          <GoalField label="Carbs" unit="g" value={carbs} onChange={setCarbs} disabled={saving} />
+          <GoalField label="Fat" unit="g" value={fat} onChange={setFat} disabled={saving} />
           <GoalField
             label="Calories"
             unit="kcal"
@@ -225,9 +209,7 @@ function GoalField({
 }) {
   return (
     <View className="gap-1">
-      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {label}
-      </Text>
+      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</Text>
       <View className="flex-row items-center gap-2">
         <TextInput
           value={value}

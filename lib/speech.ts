@@ -86,13 +86,9 @@ export async function ensureSpeechPermissions(): Promise<boolean> {
  * callers should feature-detect via isSpeechRecognitionAvailable()
  * before invoking.
  */
-export function startSpeechSession(
-  callbacks: SpeechSessionCallbacks,
-): SpeechSession {
+export function startSpeechSession(callbacks: SpeechSessionCallbacks): SpeechSession {
   if (!speechModule) {
-    throw new Error(
-      "expo-speech-recognition native module is not in this build",
-    );
+    throw new Error("expo-speech-recognition native module is not in this build");
   }
   const module = speechModule;
   const removeResult = module.addListener("result", (event) => {

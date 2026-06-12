@@ -5,21 +5,10 @@
 // from. ✕ button on each row deletes (soft-delete server-side) with
 // a confirm.
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, FlatList, Pressable, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  deleteChatSession,
-  listChatSessions,
-  type ChatSessionListItem,
-} from "@/lib/api";
+import { deleteChatSession, listChatSessions, type ChatSessionListItem } from "@/lib/api";
 
 export default function ChatHistoryScreen() {
   const router = useRouter();
@@ -58,35 +47,31 @@ export default function ChatHistoryScreen() {
 
   const handleDelete = (session: ChatSessionListItem) => {
     const label = session.title.trim() || "this chat";
-    Alert.alert(
-      "Delete chat?",
-      `"${label}" will be removed from your history.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            const token = await getToken();
-            if (!token) {
-              router.replace("/login");
-              return;
-            }
-            // Optimistic remove. Snapshot the previous list so a
-            // failed delete can restore the row without refetching
-            // and losing the user's scroll position.
-            const previous = sessions ?? [];
-            setSessions(previous.filter((s) => s.id !== session.id));
-            try {
-              await deleteChatSession(token, session.id);
-            } catch (e) {
-              setSessions(previous);
-              setError(e instanceof Error ? e.message : "Delete failed");
-            }
-          },
+    Alert.alert("Delete chat?", `"${label}" will be removed from your history.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const token = await getToken();
+          if (!token) {
+            router.replace("/login");
+            return;
+          }
+          // Optimistic remove. Snapshot the previous list so a
+          // failed delete can restore the row without refetching
+          // and losing the user's scroll position.
+          const previous = sessions ?? [];
+          setSessions(previous.filter((s) => s.id !== session.id));
+          try {
+            await deleteChatSession(token, session.id);
+          } catch (e) {
+            setSessions(previous);
+            setError(e instanceof Error ? e.message : "Delete failed");
+          }
         },
-      ],
-    );
+      },
+    ]);
   };
 
   if (sessions === null && !error) {
@@ -159,8 +144,7 @@ function SessionRow({
           {title}
         </Text>
         <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
-          {session.message_count}{" "}
-          {session.message_count === 1 ? "message" : "messages"} ·{" "}
+          {session.message_count} {session.message_count === 1 ? "message" : "messages"} ·{" "}
           {formatRelative(session.last_message_at)}
         </Text>
       </Pressable>

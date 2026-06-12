@@ -1,0 +1,90 @@
+name: CI
+
+# PR status checks gating merge to main, mirroring prog-strength-web's
+# CI with mobile-appropriate substitutions: no test/build steps (no JS
+# test runner by SOW decision — manual on-device smoke is the bar; a
+# "build" here would be a 30-minute EAS native build, which release.yml
+# owns), and expo-doctor as the mobile-specific dependency/config
+# health check.
+
+on:
+  pull_request:
+    branches: [main]
+    # `edited` so a fixed PR title re-runs the conventional-commits job
+    # without needing a push.
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: lint / format / typecheck / doctor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Expo doctor
+        # Validates dependency versions against the Expo SDK, config
+        # plugin sanity, and common project misconfigurations — the
+        # closest thing to a "does this still build natively" check
+        # that fits in CI without a 30-minute EAS build.
+        run: npx expo-doctor
+
+  conventional-commits:
+    name: conventional commits
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint PR commits
+        run: >
+          npx commitlint
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
+          --verbose
+
+      # PRs squash-merge, so the PR title becomes the commit subject on
+      # main — it must be a valid conventional commit for the release
+      # pipeline (and future semantic-release adoption).
+      - name: Lint PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: printf '%s\n' "$PR_TITLE" | npx commitlint --verbose

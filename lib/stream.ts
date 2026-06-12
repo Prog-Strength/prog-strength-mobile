@@ -48,10 +48,7 @@ export type StreamEvent =
  * event; we don't enforce a timeout here. Network errors propagate as
  * thrown errors from the async generator.
  */
-export async function* streamChat(
-  token: string,
-  body: unknown,
-): AsyncGenerator<StreamEvent> {
+export async function* streamChat(token: string, body: unknown): AsyncGenerator<StreamEvent> {
   const resp = await expoFetch(`${config.agentUrl}/chat`, {
     method: "POST",
     headers: {
@@ -80,9 +77,7 @@ export async function* streamChat(
  * between reads so an event boundary that lands mid-chunk doesn't drop
  * the event.
  */
-export async function* parseSSE(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<StreamEvent> {
+export async function* parseSSE(body: ReadableStream<Uint8Array>): AsyncGenerator<StreamEvent> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";

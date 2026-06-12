@@ -31,10 +31,7 @@ export type TitleMessage = {
  * catch and fall back locally because a 5xx / network blip
  * shouldn't block the user from getting *some* title.
  */
-export async function generateChatTitle(
-  token: string,
-  messages: TitleMessage[],
-): Promise<string> {
+export async function generateChatTitle(token: string, messages: TitleMessage[]): Promise<string> {
   const resp = await fetch(`${config.agentUrl}/title`, {
     method: "POST",
     headers: {
@@ -70,10 +67,7 @@ export async function generateChatTitle(
  * back to text-only mode for that turn — voice is enhancement, not
  * core.
  */
-export async function generateChatSpeech(
-  token: string,
-  text: string,
-): Promise<string> {
+export async function generateChatSpeech(token: string, text: string): Promise<string> {
   const resp = await fetch(`${config.agentUrl}/speak`, {
     method: "POST",
     headers: {

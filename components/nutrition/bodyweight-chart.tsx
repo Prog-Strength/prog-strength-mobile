@@ -14,13 +14,7 @@
 // never rewritten.
 import { useMemo, useState } from "react";
 import { View } from "react-native";
-import Svg, {
-  Circle,
-  G,
-  Line,
-  Polyline,
-  Text as SvgText,
-} from "react-native-svg";
+import Svg, { Circle, G, Line, Polyline, Text as SvgText } from "react-native-svg";
 import type { BodyweightEntry } from "@/lib/api";
 import { convertWeight } from "@/lib/units";
 import { niceXTicks, niceYTicks } from "@/components/charts/ticks";
@@ -54,10 +48,7 @@ export type BodyweightStats = {
   unit: Unit;
 };
 
-export function computeStats(
-  entries: BodyweightEntry[],
-  unit: Unit,
-): BodyweightStats | null {
+export function computeStats(entries: BodyweightEntry[], unit: Unit): BodyweightStats | null {
   if (entries.length === 0) return null;
   const values = entries.map((e) => ({
     v: convertWeight(e.weight, e.unit, unit),
@@ -72,11 +63,7 @@ export function computeStats(
   const byDay = new Map<number, number[]>();
   for (const x of values) {
     const d = new Date(x.t);
-    const dayStart = new Date(
-      d.getFullYear(),
-      d.getMonth(),
-      d.getDate(),
-    ).getTime();
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
     const arr = byDay.get(dayStart) ?? [];
     arr.push(x.v);
     byDay.set(dayStart, arr);
@@ -86,9 +73,7 @@ export function computeStats(
   let deltaPercent: number | null = null;
   if (dayStartTimes.length >= 2) {
     const firstAvg = mean(byDay.get(dayStartTimes[0]) ?? []);
-    const lastAvg = mean(
-      byDay.get(dayStartTimes[dayStartTimes.length - 1]) ?? [],
-    );
+    const lastAvg = mean(byDay.get(dayStartTimes[dayStartTimes.length - 1]) ?? []);
     delta = lastAvg - firstAvg;
     deltaPercent = firstAvg > 0 ? (delta / firstAvg) * 100 : null;
   }
@@ -131,11 +116,7 @@ export function BodyweightChart({
     const byDay = new Map<number, number[]>();
     for (const p of rawPoints) {
       const d = new Date(p.t);
-      const dayStart = new Date(
-        d.getFullYear(),
-        d.getMonth(),
-        d.getDate(),
-      ).getTime();
+      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
       const arr = byDay.get(dayStart) ?? [];
       arr.push(p.v);
       byDay.set(dayStart, arr);
@@ -184,17 +165,13 @@ export function BodyweightChart({
   const [xMin, xMax] = xDomain;
   const [yMin, yMax] = yDomain;
 
-  const xScale = (t: number) =>
-    PADDING_LEFT + ((t - xMin) / (xMax - xMin)) * plotW;
-  const yScale = (v: number) =>
-    PADDING_TOP + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+  const xScale = (t: number) => PADDING_LEFT + ((t - xMin) / (xMax - xMin)) * plotW;
+  const yScale = (v: number) => PADDING_TOP + (1 - (v - yMin) / (yMax - yMin)) * plotH;
 
   const yTicks = niceYTicks(yMin, yMax, 4);
   const xTicks = niceXTicks(xMin, xMax, Math.min(3, rawPoints.length));
 
-  const avgPoly = avgPoints
-    .map((p) => `${xScale(p.t)},${yScale(p.v)}`)
-    .join(" ");
+  const avgPoly = avgPoints.map((p) => `${xScale(p.t)},${yScale(p.v)}`).join(" ");
 
   return (
     <View
@@ -270,12 +247,7 @@ export function BodyweightChart({
 
         {/* Daily-average trend line + dots */}
         {avgPoints.length > 1 && (
-          <Polyline
-            points={avgPoly}
-            fill="none"
-            stroke={COLOR_LINE}
-            strokeWidth={2}
-          />
+          <Polyline points={avgPoly} fill="none" stroke={COLOR_LINE} strokeWidth={2} />
         )}
         {avgPoints.map((p, i) => (
           <Circle

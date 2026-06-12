@@ -7,14 +7,7 @@
 // computed client-side from the components × pantry-item macros so
 // the user sees what they're saving before save.
 import { useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
 import type { PantryItem, Recipe, RecipePayload } from "@/lib/api";
 
 const MAX_COMPONENTS = 20;
@@ -79,10 +72,7 @@ export function RecipeForm({
   }, [components, pantryByID]);
 
   const atCap = components.length >= MAX_COMPONENTS;
-  const takenIds = useMemo(
-    () => new Set(components.map((c) => c.pantry_item_id)),
-    [components],
-  );
+  const takenIds = useMemo(() => new Set(components.map((c) => c.pantry_item_id)), [components]);
 
   function addComponent(pantry_item_id: string) {
     if (atCap) return;
@@ -96,9 +86,7 @@ export function RecipeForm({
     ]);
   }
   function updateQty(key: string, q: number) {
-    setComponents((prev) =>
-      prev.map((c) => (c.key === key ? { ...c, quantity: q } : c)),
-    );
+    setComponents((prev) => prev.map((c) => (c.key === key ? { ...c, quantity: q } : c)));
   }
   function removeComponent(key: string) {
     setComponents((prev) => prev.filter((c) => c.key !== key));
@@ -147,9 +135,7 @@ export function RecipeForm({
   return (
     <View className="gap-2 rounded-lg border border-border bg-surface p-3">
       <View className="gap-1">
-        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-          Name
-        </Text>
+        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">Name</Text>
         <TextInput
           value={name}
           onChangeText={setName}
@@ -203,10 +189,7 @@ export function RecipeForm({
                   key={c.key}
                   className="flex-row items-center gap-2 rounded-md border border-border bg-background px-2 py-1.5"
                 >
-                  <Text
-                    className="flex-1 text-sm text-foreground"
-                    numberOfLines={1}
-                  >
+                  <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
                     {item?.name ?? "Unknown item"}
                   </Text>
                   <TextInput
@@ -254,9 +237,7 @@ export function RecipeForm({
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text className="text-xs font-medium text-accent-fg">
-              {submitLabel}
-            </Text>
+            <Text className="text-xs font-medium text-accent-fg">{submitLabel}</Text>
           )}
         </Pressable>
       </View>
@@ -276,9 +257,7 @@ function ComponentPicker({
   const [query, setQuery] = useState("");
   const needle = query.trim().toLowerCase();
   const filtered = pantry.filter(
-    (p) =>
-      !takenIds.has(p.id) &&
-      (!needle || p.name.toLowerCase().includes(needle)),
+    (p) => !takenIds.has(p.id) && (!needle || p.name.toLowerCase().includes(needle)),
   );
   return (
     <View className="max-h-56 rounded-md border border-border bg-background">
@@ -304,7 +283,8 @@ function ComponentPicker({
               {item.name}
             </Text>
             <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
-              {formatNumber(item.calories)} cal / {formatNumber(item.serving_size)} {item.serving_unit}
+              {formatNumber(item.calories)} cal / {formatNumber(item.serving_size)}{" "}
+              {item.serving_unit}
             </Text>
           </Pressable>
         )}
@@ -338,12 +318,8 @@ function MacroPreview({
 function Tile({ label, value }: { label: string; value: string }) {
   return (
     <View className="flex-1 items-center">
-      <Text className="text-sm font-semibold tabular-nums text-foreground">
-        {value}
-      </Text>
-      <Text className="text-[10px] uppercase tracking-wider text-muted">
-        {label}
-      </Text>
+      <Text className="text-sm font-semibold tabular-nums text-foreground">{value}</Text>
+      <Text className="text-[10px] uppercase tracking-wider text-muted">{label}</Text>
     </View>
   );
 }

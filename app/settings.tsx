@@ -36,8 +36,7 @@ const HEADER_OPTIONS = {
 } as const;
 
 export default function SettingsScreen() {
-  const { profile, loading, error, update, uploadAvatar, removeAvatar } =
-    useProfile();
+  const { profile, loading, error, update, uploadAvatar, removeAvatar } = useProfile();
   const { usage, refresh: refreshUsage } = useUsage();
 
   const [name, setName] = useState("");
@@ -62,10 +61,7 @@ export default function SettingsScreen() {
       setHeight("");
     } else {
       // Mirror web: one decimal, dropping trailing ".0" so "180" reads cleanly.
-      const displayed =
-        heightUnit === "cm"
-          ? profile.height_cm
-          : profile.height_cm / CM_PER_INCH;
+      const displayed = heightUnit === "cm" ? profile.height_cm : profile.height_cm / CM_PER_INCH;
       setHeight(String(Math.round(displayed * 10) / 10));
     }
   }, [profile, heightUnit, dirty]);
@@ -194,10 +190,7 @@ export default function SettingsScreen() {
   const countdown = resetCountdown();
 
   return (
-    <ScrollView
-      className="flex-1 bg-background"
-      contentContainerClassName="gap-6 px-4 py-4 pb-12"
-    >
+    <ScrollView className="flex-1 bg-background" contentContainerClassName="gap-6 px-4 py-4 pb-12">
       <Stack.Screen options={HEADER_OPTIONS} />
 
       {/* ---- Profile ---- */}
@@ -333,30 +326,16 @@ export default function SettingsScreen() {
   );
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View className="gap-3 rounded-lg border border-border bg-surface px-4 py-4">
-      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {title}
-      </Text>
+      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">{title}</Text>
       {children}
     </View>
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <View className="gap-1">
       <Text className="text-xs text-muted">{label}</Text>

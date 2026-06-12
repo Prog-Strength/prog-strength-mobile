@@ -10,19 +10,10 @@
 //   - "Customize" lives in the header as a small button that opens
 //     a modal-style sheet (HeadlineExercisesSheet).
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  listPersonalRecords,
-  type PersonalRecord,
-} from "@/lib/api";
+import { listPersonalRecords, type PersonalRecord } from "@/lib/api";
 import { HeadlineExercisesSheet } from "@/components/progress/headline-exercises-sheet";
 
 export function PRsView() {
@@ -59,17 +50,13 @@ export function PRsView() {
   return (
     <View className="flex-1">
       <View className="flex-row items-center justify-between px-4 pb-2">
-        <Text className="text-xs text-muted">
-          Heaviest set vs current estimated 1RM.
-        </Text>
+        <Text className="text-xs text-muted">Heaviest set vs current estimated 1RM.</Text>
         <Pressable
           onPress={() => setCustomizeOpen(true)}
           accessibilityRole="button"
           className="rounded-full border border-border bg-surface px-3 py-1 active:opacity-80"
         >
-          <Text className="text-xs font-medium text-foreground">
-            Customize
-          </Text>
+          <Text className="text-xs font-medium text-foreground">Customize</Text>
         </Pressable>
       </View>
 
@@ -88,9 +75,7 @@ export function PRsView() {
 
         {records && records.length === 0 && (
           <View className="rounded-lg border border-border bg-surface p-6">
-            <Text className="text-center text-sm text-muted">
-              No headline lifts configured.
-            </Text>
+            <Text className="text-center text-sm text-muted">No headline lifts configured.</Text>
           </View>
         )}
 
@@ -140,17 +125,12 @@ function PRCard({ record }: { record: PersonalRecord }) {
       className="gap-2 rounded-lg border border-border bg-surface p-3 active:opacity-80 disabled:opacity-100"
     >
       <View className="flex-row items-center justify-between gap-2">
-        <Text
-          className="flex-1 text-sm font-semibold text-foreground"
-          numberOfLines={1}
-        >
+        <Text className="flex-1 text-sm font-semibold text-foreground" numberOfLines={1}>
           {record.exercise_name}
         </Text>
         {readyForAttempt && (
           <View className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5">
-            <Text className="text-[10px] font-medium text-amber-200">
-              Time for a max?
-            </Text>
+            <Text className="text-[10px] font-medium text-amber-200">Time for a max?</Text>
           </View>
         )}
       </View>
@@ -170,9 +150,7 @@ function PRCard({ record }: { record: PersonalRecord }) {
       ) : (
         <View>
           <Text className="text-2xl font-semibold text-muted">—</Text>
-          <Text className="text-[10px] uppercase tracking-wider text-muted">
-            No record yet
-          </Text>
+          <Text className="text-[10px] uppercase tracking-wider text-muted">No record yet</Text>
         </View>
       )}
 
@@ -183,16 +161,9 @@ function PRCard({ record }: { record: PersonalRecord }) {
         <Text className="mt-0.5 text-sm font-medium tabular-nums text-foreground">
           {record.current_estimated_1rm === null
             ? "—"
-            : formatWeight(
-                record.current_estimated_1rm,
-                record.estimated_1rm_unit,
-              )}
+            : formatWeight(record.current_estimated_1rm, record.estimated_1rm_unit)}
           {gap !== null && Math.abs(gap) >= 1 && (
-            <Text
-              className={`text-xs ${
-                gap > 0 ? "text-emerald-300" : "text-muted"
-              }`}
-            >
+            <Text className={`text-xs ${gap > 0 ? "text-emerald-300" : "text-muted"}`}>
               {"  "}
               {gap > 0 ? "+" : ""}
               {gap.toFixed(1)} vs PR
@@ -201,9 +172,7 @@ function PRCard({ record }: { record: PersonalRecord }) {
         </Text>
       </View>
 
-      {hasPR && record.workout_id && (
-        <Text className="text-xs text-accent">View workout →</Text>
-      )}
+      {hasPR && record.workout_id && <Text className="text-xs text-accent">View workout →</Text>}
     </Pressable>
   );
 }

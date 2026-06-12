@@ -8,19 +8,11 @@ import { Text, View } from "react-native";
  *
  * Delete this component (and every usage) once the last tab ships.
  */
-export function ComingSoon({
-  title,
-  body,
-}: {
-  title: string;
-  body: string;
-}) {
+export function ComingSoon({ title, body }: { title: string; body: string }) {
   return (
     <View className="flex-1 items-center justify-center bg-background px-6">
       <View className="w-full max-w-sm gap-2">
-        <Text className="text-center text-xl font-semibold text-foreground">
-          {title}
-        </Text>
+        <Text className="text-center text-xl font-semibold text-foreground">{title}</Text>
         <Text className="text-center text-sm text-muted">{body}</Text>
       </View>
     </View>

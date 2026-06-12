@@ -7,23 +7,11 @@
 // RefreshControl matches workouts-view.tsx's list-header pattern and avoids
 // the FlatList VirtualizedList nesting warning when ScrollView wraps it.
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  listRunningSessions,
-  listWorkouts,
-  type RunningSession,
-  type Workout,
-} from "@/lib/api";
+import { listRunningSessions, listWorkouts, type RunningSession, type Workout } from "@/lib/api";
 import {
   convertWeight,
   formatDistance,
@@ -100,9 +88,7 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
   const stats = computeStats(workouts, runs, weightUnit);
 
   // Merge workouts + runs sorted newest-first, take 10.
-  type ActivityItem =
-    | { kind: "workout"; item: Workout }
-    | { kind: "run"; item: RunningSession };
+  type ActivityItem = { kind: "workout"; item: Workout } | { kind: "run"; item: RunningSession };
 
   const recent: ActivityItem[] = [
     ...workouts.map((w): ActivityItem => ({ kind: "workout", item: w })),
@@ -195,18 +181,14 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
                   <WorkoutRow
                     key={entry.item.id}
                     workout={entry.item}
-                    onPress={() =>
-                      router.push(`/activities/workout/${entry.item.id}`)
-                    }
+                    onPress={() => router.push(`/activities/workout/${entry.item.id}`)}
                   />
                 ) : (
                   <RunRow
                     key={entry.item.id}
                     run={entry.item}
                     distanceUnit={distanceUnit}
-                    onPress={() =>
-                      router.push(`/activities/run/${entry.item.id}`)
-                    }
+                    onPress={() => router.push(`/activities/run/${entry.item.id}`)}
                   />
                 ),
               )}
@@ -242,8 +224,7 @@ function computeStats(
   let prCount = 0;
   for (const w of workouts) {
     if (w.ended_at) {
-      const ms =
-        new Date(w.ended_at).getTime() - new Date(w.performed_at).getTime();
+      const ms = new Date(w.ended_at).getTime() - new Date(w.performed_at).getTime();
       if (ms > 0) workoutMs += ms;
     }
     totalVolume += workoutVolumeInUnit(w, weightUnit);
@@ -318,10 +299,7 @@ function StatTile({ label, value }: { label: string; value: string }) {
       style={{ flexBasis: "47%" }}
       className="rounded-lg border border-border bg-surface px-3 py-3"
     >
-      <Text
-        className="text-base font-semibold tabular-nums text-foreground"
-        numberOfLines={1}
-      >
+      <Text className="text-base font-semibold tabular-nums text-foreground" numberOfLines={1}>
         {value}
       </Text>
       <Text
@@ -339,15 +317,8 @@ function StatTile({ label, value }: { label: string; value: string }) {
 const ACCENT_WORKOUT = "#3b82f6";
 const ACCENT_RUN = "#2dd4bf";
 
-function WorkoutRow({
-  workout,
-  onPress,
-}: {
-  workout: Workout;
-  onPress: () => void;
-}) {
-  const name =
-    workout.name && workout.name.trim().length > 0 ? workout.name : "Workout";
+function WorkoutRow({ workout, onPress }: { workout: Workout; onPress: () => void }) {
+  const name = workout.name && workout.name.trim().length > 0 ? workout.name : "Workout";
   const dateLabel = formatActivityDate(workout.performed_at);
   const exerciseCount = workout.exercises.length;
   const stat = `${exerciseCount} ${exerciseCount === 1 ? "exercise" : "exercises"}`;
@@ -372,10 +343,7 @@ function RunRow({
   distanceUnit: DistanceUnit;
   onPress: () => void;
 }) {
-  const name =
-    run.name && run.name.trim().length > 0
-      ? run.name
-      : runFallbackName(run.start_time);
+  const name = run.name && run.name.trim().length > 0 ? run.name : runFallbackName(run.start_time);
   const dateLabel = formatActivityDate(run.start_time);
   const distance = `${formatDistance(run.distance_meters, distanceUnit)} ${distanceUnit}`;
   const pace =
@@ -421,10 +389,7 @@ function ActivityRow({
       <View className="flex-1 flex-row items-center gap-2 px-3 py-3">
         <View className="flex-1 gap-0.5">
           <View className="flex-row items-baseline justify-between gap-2">
-            <Text
-              numberOfLines={1}
-              className="flex-1 text-base font-medium text-foreground"
-            >
+            <Text numberOfLines={1} className="flex-1 text-base font-medium text-foreground">
               {name}
             </Text>
             <Text className="text-xs text-muted">{dateLabel}</Text>

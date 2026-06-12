@@ -4,10 +4,7 @@
 // (see initial-mobile-app-implementation SOW).
 import { useState } from "react";
 import { View } from "react-native";
-import {
-  SegmentedControl,
-  type Segment,
-} from "@/components/segmented-control";
+import { SegmentedControl, type Segment } from "@/components/segmented-control";
 import { ProgressView } from "@/components/progress/progress-view";
 import { PRsView } from "@/components/progress/prs-view";
 

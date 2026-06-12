@@ -22,10 +22,7 @@ const EXPIRES_AT_KEY = "ps_access_token_expires_at";
  * which doesn't prompt but does require the device to be unlocked
  * before the token is readable.
  */
-export async function setToken(
-  token: string,
-  expiresInSeconds?: number,
-): Promise<void> {
+export async function setToken(token: string, expiresInSeconds?: number): Promise<void> {
   await SecureStore.setItemAsync(TOKEN_KEY, token, {
     keychainAccessible: SecureStore.WHEN_UNLOCKED,
   });

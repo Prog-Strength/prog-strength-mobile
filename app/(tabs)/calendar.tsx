@@ -11,13 +11,7 @@
 // current month, which is what the grid's leading/trailing cells
 // belong to.
 import { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
@@ -30,12 +24,7 @@ import {
 import { WorkoutRow } from "@/components/workout-row";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 import { useProfile } from "@/lib/profile-context";
-import {
-  formatDistance,
-  formatPace,
-  runFallbackName,
-  type DistanceUnit,
-} from "@/lib/units";
+import { formatDistance, formatPace, runFallbackName, type DistanceUnit } from "@/lib/units";
 
 // 7-column header. Monday-first because that's how the lifter
 // mentally chunks a training week (Monday = start of the program
@@ -53,12 +42,8 @@ export default function CalendarScreen() {
   const { profile } = useProfile();
   const distanceUnit: DistanceUnit = profile?.distance_unit ?? "mi";
 
-  const [monthAnchor, setMonthAnchor] = useState<Date>(() =>
-    startOfMonth(new Date()),
-  );
-  const [selectedDay, setSelectedDay] = useState<Date>(() =>
-    startOfLocalDay(new Date()),
-  );
+  const [monthAnchor, setMonthAnchor] = useState<Date>(() => startOfMonth(new Date()));
+  const [selectedDay, setSelectedDay] = useState<Date>(() => startOfLocalDay(new Date()));
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [runs, setRuns] = useState<RunningSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,10 +59,7 @@ export default function CalendarScreen() {
   // an inline computation here would yield a new reference each render,
   // invalidate the useCallback below, re-fire useFocusEffect, and
   // re-fetch in an infinite loop.
-  const gridEnd = useMemo(
-    () => addDays(grid[grid.length - 1], 1),
-    [grid],
-  );
+  const gridEnd = useMemo(() => addDays(grid[grid.length - 1], 1), [grid]);
 
   const load = useCallback(
     async (since: Date, until: Date) => {
@@ -145,11 +127,7 @@ export default function CalendarScreen() {
     }
     // Sort each day's workouts most-recent-first.
     for (const [, arr] of m) {
-      arr.sort(
-        (a, b) =>
-          new Date(b.performed_at).getTime() -
-          new Date(a.performed_at).getTime(),
-      );
+      arr.sort((a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime());
     }
     return m;
   }, [workouts]);
@@ -165,16 +143,12 @@ export default function CalendarScreen() {
     }
     // Sort each day's runs most-recent-first.
     for (const [, arr] of m) {
-      arr.sort(
-        (a, b) =>
-          new Date(b.start_time).getTime() - new Date(a.start_time).getTime(),
-      );
+      arr.sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
     }
     return m;
   }, [runs]);
 
-  const selectedDayWorkouts =
-    workoutsByDay.get(localDateKey(selectedDay)) ?? [];
+  const selectedDayWorkouts = workoutsByDay.get(localDateKey(selectedDay)) ?? [];
   const selectedDayRuns = runsByDay.get(localDateKey(selectedDay)) ?? [];
 
   return (
@@ -239,19 +213,9 @@ function MonthHeader({
   return (
     <View className="flex-row items-center justify-between gap-3 px-4 py-3">
       <View className="flex-row items-center gap-2">
-        <NavButton
-          onPress={onPrev}
-          label="‹"
-          accessibilityLabel="Previous month"
-        />
-        <Text className="text-base font-semibold text-foreground">
-          {formatMonthYear(anchor)}
-        </Text>
-        <NavButton
-          onPress={onNext}
-          label="›"
-          accessibilityLabel="Next month"
-        />
+        <NavButton onPress={onPrev} label="‹" accessibilityLabel="Previous month" />
+        <Text className="text-base font-semibold text-foreground">{formatMonthYear(anchor)}</Text>
+        <NavButton onPress={onNext} label="›" accessibilityLabel="Next month" />
       </View>
       <Pressable
         onPress={onToday}
@@ -354,44 +318,36 @@ function MonthGrid({
                 })}
                 className="h-12 flex-1 items-center justify-center"
               >
-            <View
-              className={`h-9 w-9 items-center justify-center rounded-full ${
-                isSelected
-                  ? "bg-accent"
-                  : isToday
-                    ? "border border-accent/60"
-                    : ""
-              }`}
-            >
-              <Text
-                className={`text-sm tabular-nums ${
-                  isSelected
-                    ? "font-semibold text-accent-fg"
-                    : inMonth
-                      ? "text-foreground"
-                      : "text-muted/60"
-                }`}
-              >
-                {d.getDate()}
-              </Text>
-            </View>
-            {/* Dot row: workout dot (accent/white) + run dot (teal), side by side */}
-            {(hasWorkouts || hasRuns) && (
-              <View className="mt-0.5 flex-row items-center gap-0.5">
-                {hasWorkouts && (
-                  <View
-                    className={`h-1 w-1 rounded-full ${
-                      isSelected ? "bg-accent-fg" : "bg-accent"
+                <View
+                  className={`h-9 w-9 items-center justify-center rounded-full ${
+                    isSelected ? "bg-accent" : isToday ? "border border-accent/60" : ""
+                  }`}
+                >
+                  <Text
+                    className={`text-sm tabular-nums ${
+                      isSelected
+                        ? "font-semibold text-accent-fg"
+                        : inMonth
+                          ? "text-foreground"
+                          : "text-muted/60"
                     }`}
-                  />
+                  >
+                    {d.getDate()}
+                  </Text>
+                </View>
+                {/* Dot row: workout dot (accent/white) + run dot (teal), side by side */}
+                {(hasWorkouts || hasRuns) && (
+                  <View className="mt-0.5 flex-row items-center gap-0.5">
+                    {hasWorkouts && (
+                      <View
+                        className={`h-1 w-1 rounded-full ${
+                          isSelected ? "bg-accent-fg" : "bg-accent"
+                        }`}
+                      />
+                    )}
+                    {hasRuns && <View className="h-1 w-1 rounded-full bg-teal-400" />}
+                  </View>
                 )}
-                {hasRuns && (
-                  <View
-                    className="h-1 w-1 rounded-full bg-teal-400"
-                  />
-                )}
-              </View>
-            )}
               </Pressable>
             );
           })}
@@ -425,10 +381,7 @@ function Agenda({
   const hasItems = workouts.length > 0 || runs.length > 0;
 
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerClassName="px-4 py-3 gap-3"
-    >
+    <ScrollView className="flex-1" contentContainerClassName="px-4 py-3 gap-3">
       <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
         {selectedDay.toLocaleDateString("en-US", {
           weekday: "long",
@@ -465,12 +418,7 @@ function Agenda({
       ))}
 
       {runs.map((r) => (
-        <RunRow
-          key={r.id}
-          run={r}
-          distanceUnit={distanceUnit}
-          onPress={() => onPressRun(r.id)}
-        />
+        <RunRow key={r.id} run={r} distanceUnit={distanceUnit} onPress={() => onPressRun(r.id)} />
       ))}
     </ScrollView>
   );
@@ -488,9 +436,7 @@ function RunRow({
   onPress: () => void;
 }) {
   const name =
-    run.name && run.name.trim().length > 0
-      ? run.name.trim()
-      : runFallbackName(run.start_time);
+    run.name && run.name.trim().length > 0 ? run.name.trim() : runFallbackName(run.start_time);
   const distStr = `${formatDistance(run.distance_meters, distanceUnit)} ${distanceUnit}`;
   const paceStr = formatPace(run.avg_pace_sec_per_km, distanceUnit);
   const hasPace = paceStr !== "—";

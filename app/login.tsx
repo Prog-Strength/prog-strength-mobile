@@ -17,13 +17,7 @@
 // that, openAuthSessionAsync resolves with type === "cancel" and the
 // screen sits idle.
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
@@ -36,9 +30,7 @@ import { getToken, setToken } from "@/lib/auth";
 // configured. Production builds (api.progstrength.fitness) never see
 // this panel.
 function isLocalApi(url: string): boolean {
-  return /^https?:\/\/(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(
-    url,
-  );
+  return /^https?:\/\/(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url);
 }
 
 // Required when using openAuthSessionAsync on web; harmless on native.
@@ -101,10 +93,7 @@ export default function LoginScreen() {
         return;
       }
       const expiresIn = expiresInRaw ? parseInt(expiresInRaw, 10) : NaN;
-      await setToken(
-        token,
-        Number.isFinite(expiresIn) ? expiresIn : undefined,
-      );
+      await setToken(token, Number.isFinite(expiresIn) ? expiresIn : undefined);
       router.replace("/activities");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -136,10 +125,7 @@ export default function LoginScreen() {
       if (!token) {
         throw new Error("API did not return a token");
       }
-      await setToken(
-        token,
-        Number.isFinite(expiresIn) ? expiresIn : undefined,
-      );
+      await setToken(token, Number.isFinite(expiresIn) ? expiresIn : undefined);
       router.replace("/activities");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -169,15 +155,11 @@ export default function LoginScreen() {
           {busy ? (
             <ActivityIndicator color="#fafafa" />
           ) : (
-            <Text className="text-sm font-medium text-foreground">
-              Continue with Google
-            </Text>
+            <Text className="text-sm font-medium text-foreground">Continue with Google</Text>
           )}
         </Pressable>
 
-        {error && (
-          <Text className="text-center text-xs text-danger">{error}</Text>
-        )}
+        {error && <Text className="text-center text-xs text-danger">{error}</Text>}
 
         <Text className="text-center text-xs text-muted">
           We use Google sign-in to identify you. No password to manage.
@@ -185,13 +167,10 @@ export default function LoginScreen() {
 
         {showDevPanel && (
           <View className="gap-2 rounded-lg border border-border bg-surface px-4 py-3">
-            <Text className="text-[10px] uppercase tracking-wider text-muted">
-              Dev sign-in
-            </Text>
+            <Text className="text-[10px] uppercase tracking-wider text-muted">Dev sign-in</Text>
             <Text className="text-xs text-muted">
-              EXPO_PUBLIC_API_URL points at a local host. Mint a JWT
-              via the API&apos;s DEV_AUTH=true endpoint instead of going
-              through Google OAuth.
+              EXPO_PUBLIC_API_URL points at a local host. Mint a JWT via the API&apos;s
+              DEV_AUTH=true endpoint instead of going through Google OAuth.
             </Text>
             <TextInput
               value={devEmail}
@@ -213,9 +192,7 @@ export default function LoginScreen() {
               {busy ? (
                 <ActivityIndicator color="#fafafa" />
               ) : (
-                <Text className="text-center text-xs font-medium text-foreground">
-                  Dev sign in
-                </Text>
+                <Text className="text-center text-xs font-medium text-foreground">Dev sign in</Text>
               )}
             </Pressable>
           </View>

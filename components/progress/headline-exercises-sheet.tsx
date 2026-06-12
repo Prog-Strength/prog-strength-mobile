@@ -9,14 +9,7 @@
 //   - Reset to defaults + Save are the two action buttons.
 //   - "default" badge on catalog rows that are also in the curated set.
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { getToken } from "@/lib/auth";
 import {
   listHeadlineExerciseDefaults,
@@ -191,28 +184,17 @@ export function HeadlineExercisesSheet({
                         >
                           <View
                             className={`h-5 w-5 items-center justify-center rounded border ${
-                              checked
-                                ? "border-accent bg-accent"
-                                : "border-border bg-surface"
+                              checked ? "border-accent bg-accent" : "border-border bg-surface"
                             }`}
                           >
-                            {checked && (
-                              <Text className="text-xs font-bold text-accent-fg">
-                                ✓
-                              </Text>
-                            )}
+                            {checked && <Text className="text-xs font-bold text-accent-fg">✓</Text>}
                           </View>
-                          <Text
-                            className="flex-1 text-sm text-foreground"
-                            numberOfLines={1}
-                          >
+                          <Text className="flex-1 text-sm text-foreground" numberOfLines={1}>
                             {ex.name}
                           </Text>
                           {isDefault && (
                             <View className="rounded-full border border-border bg-surface px-2 py-0.5">
-                              <Text className="text-[10px] text-muted">
-                                default
-                              </Text>
+                              <Text className="text-[10px] text-muted">default</Text>
                             </View>
                           )}
                         </Pressable>
@@ -245,9 +227,7 @@ export function HeadlineExercisesSheet({
               accessibilityRole="button"
               className="rounded-md border border-border bg-surface px-3 py-1.5 active:opacity-80 disabled:opacity-50"
             >
-              <Text className="text-xs font-medium text-foreground">
-                Cancel
-              </Text>
+              <Text className="text-xs font-medium text-foreground">Cancel</Text>
             </Pressable>
             <Pressable
               onPress={save}
@@ -258,9 +238,7 @@ export function HeadlineExercisesSheet({
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text className="text-xs font-medium text-accent-fg">
-                  Save
-                </Text>
+                <Text className="text-xs font-medium text-accent-fg">Save</Text>
               )}
             </Pressable>
           </View>

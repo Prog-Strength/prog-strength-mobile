@@ -15,20 +15,8 @@
 // at least one workout in the window is unclosed, so the total reads
 // as a lower bound rather than a misleading underreport.
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
-import Svg, {
-  Circle,
-  G,
-  Line,
-  Path,
-  Rect,
-  Text as SvgText,
-} from "react-native-svg";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import Svg, { Circle, G, Line, Path, Rect, Text as SvgText } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import { listWorkouts, type Workout } from "@/lib/api";
@@ -117,9 +105,7 @@ export function DurationChart() {
           </Text>
         </View>
         <View className="items-end">
-          <Text className="text-[10px] uppercase tracking-wider text-muted">
-            Sessions
-          </Text>
+          <Text className="text-[10px] uppercase tracking-wider text-muted">Sessions</Text>
           <Text className="mt-0.5 text-lg font-semibold tabular-nums text-foreground">
             {summary.sessionCount}
           </Text>
@@ -137,9 +123,7 @@ export function DurationChart() {
           style={{ height: CHART_HEIGHT }}
           className="items-center justify-center rounded-md border border-border/40 bg-background"
         >
-          <Text className="text-xs text-muted">
-            No completed workouts in this window.
-          </Text>
+          <Text className="text-xs text-muted">No completed workouts in this window.</Text>
         </View>
       ) : (
         <AreaChart weeks={summary.weeks} />
@@ -168,16 +152,10 @@ function TimeframePills({
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             className={`rounded-full border px-3 py-1 ${
-              active
-                ? "border-accent bg-accent"
-                : "border-border bg-background"
+              active ? "border-accent bg-accent" : "border-border bg-background"
             } active:opacity-80`}
           >
-            <Text
-              className={`text-xs ${
-                active ? "text-accent-fg" : "text-muted"
-              }`}
-            >
+            <Text className={`text-xs ${active ? "text-accent-fg" : "text-muted"}`}>
               Last {tf.label}
             </Text>
           </Pressable>
@@ -220,8 +198,7 @@ function AreaChart({ weeks }: { weeks: WeekPoint[] }) {
   const baselineY = PADDING_TOP + plotH;
 
   const xScale = (t: number) =>
-    PADDING_LEFT +
-    ((t - (tMin - xPad)) / Math.max(1, tMax - tMin + 2 * xPad)) * plotW;
+    PADDING_LEFT + ((t - (tMin - xPad)) / Math.max(1, tMax - tMin + 2 * xPad)) * plotW;
   const yScale = (m: number) => PADDING_TOP + (1 - m / yMax) * plotH;
 
   // Build the line path and the matching area path. Area closes back
@@ -252,7 +229,11 @@ function AreaChart({ weeks }: { weeks: WeekPoint[] }) {
   // midpoint label so the lifter has three anchors.
   const xTickValues =
     weeks.length >= 6
-      ? [weeks[0].weekStart, weeks[Math.floor(weeks.length / 2)].weekStart, weeks[weeks.length - 1].weekStart]
+      ? [
+          weeks[0].weekStart,
+          weeks[Math.floor(weeks.length / 2)].weekStart,
+          weeks[weeks.length - 1].weekStart,
+        ]
       : [weeks[0].weekStart, weeks[weeks.length - 1].weekStart];
 
   return (
@@ -294,12 +275,7 @@ function AreaChart({ weeks }: { weeks: WeekPoint[] }) {
         <Path d={areaPath} fill={COLOR_AREA} />
 
         {/* Line */}
-        <Path
-          d={linePath}
-          stroke={COLOR_LINE}
-          strokeWidth={2}
-          fill="none"
-        />
+        <Path d={linePath} stroke={COLOR_LINE} strokeWidth={2} fill="none" />
 
         {/* Per-week dots — small markers so single-point ranges still
             render something visible, and so the user can mentally
@@ -372,8 +348,7 @@ function summarize(workouts: Workout[], days: number): Summary {
       openWorkouts++;
       continue;
     }
-    const durationMs =
-      new Date(w.ended_at).getTime() - performedAt.getTime();
+    const durationMs = new Date(w.ended_at).getTime() - performedAt.getTime();
     if (!Number.isFinite(durationMs) || durationMs <= 0) continue;
     const minutes = durationMs / 60_000;
     totalMinutes += minutes;
