@@ -21,10 +21,16 @@ import {
   type Workout,
   type RunningSession,
 } from "@/lib/api";
-import { WorkoutRow } from "@/components/workout-row";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 import { useProfile } from "@/lib/profile-context";
-import { formatDistance, formatPace, runFallbackName, type DistanceUnit } from "@/lib/units";
+import {
+  formatDistance,
+  formatPace,
+  formatRunDuration,
+  formatWeight,
+  runFallbackName,
+  type DistanceUnit,
+} from "@/lib/units";
 
 // 7-column header. Monday-first because that's how the lifter
 // mentally chunks a training week (Monday = start of the program
@@ -41,6 +47,9 @@ export default function CalendarScreen() {
   const { byID: exerciseByID } = useExerciseCatalog();
   const { profile } = useProfile();
   const distanceUnit: DistanceUnit = profile?.distance_unit ?? "mi";
+  // undefined while the profile loads — call sites fall back to each
+  // set's own logged unit rather than assuming lb.
+  const preferredWeightUnit = profile?.weight_unit;
 
   const [monthAnchor, setMonthAnchor] = useState<Date>(() => startOfMonth(new Date()));
   const [selectedDay, setSelectedDay] = useState<Date>(() => startOfLocalDay(new Date()));
@@ -190,6 +199,7 @@ export default function CalendarScreen() {
         exerciseByID={exerciseByID}
         loading={loading}
         distanceUnit={distanceUnit}
+        preferredWeightUnit={preferredWeightUnit}
         onPressWorkout={(id) => router.push(`/activities/workout/${id}`)}
         onPressRun={(id) => router.push(`/activities/run/${id}`)}
       />
@@ -359,6 +369,19 @@ function MonthGrid({
 
 // --- Agenda -------------------------------------------------------
 
+/**
+ * At-a-glance summary line: "2 activities · 1 run · 1 lift".
+ * Zero parts are omitted (no "0 runs"); every part is singular/plural
+ * correct. Mirrors web's day-digest.tsx countLine function exactly.
+ */
+function countLine(total: number, runs: number, lifts: number): string {
+  const activityLabel = `${total} ${total === 1 ? "activity" : "activities"}`;
+  const parts: string[] = [];
+  if (runs > 0) parts.push(`${runs} ${runs === 1 ? "run" : "runs"}`);
+  if (lifts > 0) parts.push(`${lifts} ${lifts === 1 ? "lift" : "lifts"}`);
+  return parts.length > 0 ? `${activityLabel} · ${parts.join(" · ")}` : activityLabel;
+}
+
 function Agenda({
   selectedDay,
   workouts,
@@ -366,6 +389,7 @@ function Agenda({
   exerciseByID,
   loading,
   distanceUnit,
+  preferredWeightUnit,
   onPressWorkout,
   onPressRun,
 }: {
@@ -375,21 +399,30 @@ function Agenda({
   exerciseByID: Map<string, Exercise>;
   loading: boolean;
   distanceUnit: DistanceUnit;
+  preferredWeightUnit: "lb" | "kg" | undefined;
   onPressWorkout: (id: string) => void;
   onPressRun: (id: string) => void;
 }) {
   const hasItems = workouts.length > 0 || runs.length > 0;
+  const total = workouts.length + runs.length;
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="px-4 py-3 gap-3">
-      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {selectedDay.toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "long",
-          day: "numeric",
-          year: "numeric",
-        })}
-      </Text>
+      <View>
+        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+          {selectedDay.toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </Text>
+        {hasItems && (
+          <Text className="mt-0.5 text-xs text-muted">
+            {countLine(total, runs.length, workouts.length)}
+          </Text>
+        )}
+      </View>
 
       {loading && !hasItems && (
         <View className="items-center py-6">
@@ -413,6 +446,7 @@ function Agenda({
           key={w.id}
           workout={w}
           exerciseByID={exerciseByID}
+          preferredWeightUnit={preferredWeightUnit}
           onPress={() => onPressWorkout(w.id)}
         />
       ))}
@@ -424,8 +458,137 @@ function Agenda({
   );
 }
 
+// --- Workout agenda row -------------------------------------------
+
+/**
+ * Agenda row for a workout. Tapping the main area navigates; tapping
+ * the chevron on the right expands/collapses an inline exercise breakdown.
+ * Both zones are ≥44pt (minHeight on the row + hitSlop on the chevron).
+ */
+function WorkoutRow({
+  workout,
+  exerciseByID,
+  preferredWeightUnit,
+  onPress,
+}: {
+  workout: Workout;
+  exerciseByID: Map<string, Exercise>;
+  preferredWeightUnit: "lb" | "kg" | undefined;
+  onPress: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const title =
+    workout.name && workout.name.trim().length > 0
+      ? workout.name.trim()
+      : new Date(workout.performed_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+
+  const names = workout.exercises
+    .map((we) => exerciseByID.get(we.exercise_id)?.name ?? we.exercise_id)
+    .filter(Boolean);
+  const summary =
+    names.length === 0
+      ? "No exercises"
+      : names.length <= 3
+        ? names.join(" · ")
+        : `${names.slice(0, 3).join(" · ")} +${names.length - 3} more`;
+
+  const setCount = workout.exercises.reduce((n, we) => n + we.sets.length, 0);
+
+  return (
+    <View className="overflow-hidden rounded-lg border border-border bg-surface">
+      <View className="flex-row" style={{ minHeight: 44 }}>
+        {/* Main tap area — navigates to detail */}
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`View workout: ${title}`}
+          className="flex-1 px-4 py-3 active:opacity-80"
+        >
+          <View className="flex-row items-baseline justify-between gap-3">
+            <Text numberOfLines={1} className="flex-1 text-sm font-semibold text-foreground">
+              {title}
+            </Text>
+          </View>
+          <Text numberOfLines={2} className="mt-0.5 text-xs text-muted">
+            {summary}
+          </Text>
+          <Text className="mt-1 text-[10px] uppercase tracking-wider text-muted">
+            {setCount} {setCount === 1 ? "set" : "sets"}
+          </Text>
+        </Pressable>
+        {/* Chevron — toggles expansion */}
+        <Pressable
+          onPress={() => setExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? "Collapse details" : "Expand details"}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          className="items-center justify-center px-3 active:opacity-60"
+          style={{ minWidth: 44 }}
+        >
+          <Text
+            className="text-base text-muted"
+            style={{
+              transform: [{ rotate: expanded ? "180deg" : "0deg" }],
+            }}
+          >
+            ›
+          </Text>
+        </Pressable>
+      </View>
+
+      {/* Expanded workout details */}
+      {expanded && (
+        <View className="border-t border-border px-4 py-3 gap-2">
+          {workout.exercises.map((we) => {
+            const exName = exerciseByID.get(we.exercise_id)?.name ?? we.exercise_id;
+            const sc = we.sets.length;
+            // Top set: highest weight
+            const topSet =
+              we.sets.length > 0
+                ? we.sets.reduce((best, s) => (s.weight > best.weight ? s : best), we.sets[0])
+                : null;
+            const topSetStr = topSet
+              ? formatWeight(topSet.weight, topSet.unit, preferredWeightUnit ?? topSet.unit)
+              : null;
+            return (
+              <View
+                key={we.exercise_id + String(we.order)}
+                className="flex-row items-baseline justify-between gap-3"
+              >
+                <Text className="flex-1 text-xs text-foreground" numberOfLines={1}>
+                  {exName}
+                </Text>
+                <Text className="text-xs text-muted">
+                  {sc} {sc === 1 ? "set" : "sets"}
+                  {topSetStr ? ` · ${topSetStr}` : ""}
+                </Text>
+              </View>
+            );
+          })}
+          {workout.exercises.length === 0 && (
+            <Text className="text-xs text-muted">No exercises logged</Text>
+          )}
+          {workout.notes && workout.notes.trim().length > 0 && (
+            <Text className="mt-1 text-xs text-muted italic">{workout.notes.trim()}</Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
 // --- Run agenda row -----------------------------------------------
 
+/**
+ * Agenda row for a run. Tapping the main area navigates; tapping the
+ * chevron on the right expands/collapses a stat breakdown. Both zones
+ * are ≥44pt (minHeight on the row + hitSlop on the chevron).
+ */
 function RunRow({
   run,
   distanceUnit,
@@ -435,6 +598,8 @@ function RunRow({
   distanceUnit: DistanceUnit;
   onPress: () => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   const name =
     run.name && run.name.trim().length > 0 ? run.name.trim() : runFallbackName(run.start_time);
   const distStr = `${formatDistance(run.distance_meters, distanceUnit)} ${distanceUnit}`;
@@ -452,24 +617,84 @@ function RunRow({
     ? `${timeStr} · ${distStr} · ${paceStr} /${distanceUnit}`
     : `${timeStr} · ${distStr}`;
 
+  // Elevation: convert to ft when distance unit is mi (mirrors web run-digest)
+  const FEET_PER_METER = 3.28084;
+  const elevStr =
+    run.elevation_gain_meters != null
+      ? distanceUnit === "mi"
+        ? `${Math.round(run.elevation_gain_meters * FEET_PER_METER)} ft`
+        : `${Math.round(run.elevation_gain_meters)} m`
+      : "—";
+
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      className="flex-row overflow-hidden rounded-lg border border-border bg-surface active:opacity-80"
-      style={{ minHeight: 44 }}
-    >
-      {/* Teal left accent bar */}
-      <View style={{ width: 4, backgroundColor: TEAL }} />
-      <View className="flex-1 justify-center px-3 py-2">
-        <Text className="text-sm font-semibold text-foreground" numberOfLines={1}>
-          {name}
-        </Text>
-        <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
-          {subtitle}
-        </Text>
+    <View className="overflow-hidden rounded-lg border border-border bg-surface">
+      <View className="flex-row" style={{ minHeight: 44 }}>
+        {/* Teal left accent bar */}
+        <View style={{ width: 4, backgroundColor: TEAL }} />
+        {/* Main tap area — navigates to detail */}
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`View run: ${name}`}
+          className="flex-1 justify-center px-3 py-2 active:opacity-80"
+        >
+          <Text className="text-sm font-semibold text-foreground" numberOfLines={1}>
+            {name}
+          </Text>
+          <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
+            {subtitle}
+          </Text>
+        </Pressable>
+        {/* Chevron — toggles expansion */}
+        <Pressable
+          onPress={() => setExpanded((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? "Collapse details" : "Expand details"}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          className="items-center justify-center px-3 active:opacity-60"
+          style={{ minWidth: 44 }}
+        >
+          <Text
+            className="text-base text-muted"
+            style={{
+              transform: [{ rotate: expanded ? "180deg" : "0deg" }],
+            }}
+          >
+            ›
+          </Text>
+        </Pressable>
       </View>
-    </Pressable>
+
+      {/* Expanded run stats */}
+      {expanded && (
+        <View className="border-t border-border px-4 py-3 gap-1.5">
+          <RunStatRow label="Duration" value={formatRunDuration(run.duration_seconds)} />
+          <RunStatRow label="Avg pace" value={hasPace ? `${paceStr} /${distanceUnit}` : "—"} />
+          <RunStatRow
+            label="Avg HR"
+            value={run.avg_heart_rate_bpm != null ? `${run.avg_heart_rate_bpm} bpm` : "—"}
+          />
+          <RunStatRow
+            label="Max HR"
+            value={run.max_heart_rate_bpm != null ? `${run.max_heart_rate_bpm} bpm` : "—"}
+          />
+          <RunStatRow
+            label="Calories"
+            value={run.total_calories != null ? String(run.total_calories) : "—"}
+          />
+          <RunStatRow label="Elev gain" value={elevStr} />
+        </View>
+      )}
+    </View>
+  );
+}
+
+function RunStatRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-baseline justify-between gap-4">
+      <Text className="text-xs text-muted">{label}</Text>
+      <Text className="text-xs tabular-nums text-foreground">{value}</Text>
+    </View>
   );
 }
 
