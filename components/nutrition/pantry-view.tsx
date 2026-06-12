@@ -5,13 +5,7 @@
 // missing component. See initial-mobile-app-implementation SOW for the
 // nesting rationale (5-tab bar cap).
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
@@ -28,10 +22,7 @@ import {
   type Recipe,
   type RecipePayload,
 } from "@/lib/api";
-import {
-  SegmentedControl,
-  type Segment,
-} from "@/components/segmented-control";
+import { SegmentedControl, type Segment } from "@/components/segmented-control";
 import { PantryItemForm } from "@/components/nutrition/pantry-item-form";
 import { RecipeForm } from "@/components/nutrition/recipe-form";
 
@@ -93,11 +84,7 @@ export function PantryView() {
       {segment === "items" ? (
         <ItemsSection items={items} onChanged={refetch} />
       ) : (
-        <RecipesSection
-          recipes={recipes}
-          items={items ?? []}
-          onChanged={refetch}
-        />
+        <RecipesSection recipes={recipes} items={items ?? []} onChanged={refetch} />
       )}
     </View>
   );
@@ -105,13 +92,7 @@ export function PantryView() {
 
 // --- Items --------------------------------------------------------
 
-function ItemsSection({
-  items,
-  onChanged,
-}: {
-  items: PantryItem[] | null;
-  onChanged: () => void;
-}) {
+function ItemsSection({ items, onChanged }: { items: PantryItem[] | null; onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -179,9 +160,7 @@ function ItemsSection({
       ListHeaderComponent={
         <View className="gap-2 pt-1">
           <View className="flex-row items-center justify-between">
-            <Text className="text-lg font-semibold text-foreground">
-              Items ({items.length})
-            </Text>
+            <Text className="text-lg font-semibold text-foreground">Items ({items.length})</Text>
             {!adding && (
               <Pressable
                 onPress={() => {
@@ -191,9 +170,7 @@ function ItemsSection({
                 accessibilityRole="button"
                 className="rounded-md bg-accent px-3 py-1.5 active:opacity-80"
               >
-                <Text className="text-xs font-medium text-accent-fg">
-                  + New
-                </Text>
+                <Text className="text-xs font-medium text-accent-fg">+ New</Text>
               </Pressable>
             )}
           </View>
@@ -247,10 +224,7 @@ function ItemsSection({
             className="rounded-lg border border-border bg-surface p-3 active:opacity-80"
           >
             <View className="flex-row items-center justify-between gap-2">
-              <Text
-                className="flex-1 text-sm font-medium text-foreground"
-                numberOfLines={1}
-              >
+              <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
                 {item.name}
               </Text>
               <Pressable
@@ -265,9 +239,9 @@ function ItemsSection({
               </Pressable>
             </View>
             <Text className="mt-1 text-xs text-muted">
-              {formatNumber(item.calories)} cal · {formatNumber(item.protein_g)}
-              P / {formatNumber(item.fat_g)}F / {formatNumber(item.carbs_g)}C
-              · per {formatNumber(item.serving_size)} {item.serving_unit}
+              {formatNumber(item.calories)} cal · {formatNumber(item.protein_g)}P /{" "}
+              {formatNumber(item.fat_g)}F / {formatNumber(item.carbs_g)}C · per{" "}
+              {formatNumber(item.serving_size)} {item.serving_unit}
             </Text>
           </Pressable>
         );
@@ -366,9 +340,7 @@ function RecipesSection({
                 accessibilityRole="button"
                 className="rounded-md bg-accent px-3 py-1.5 active:opacity-80"
               >
-                <Text className="text-xs font-medium text-accent-fg">
-                  + New
-                </Text>
+                <Text className="text-xs font-medium text-accent-fg">+ New</Text>
               </Pressable>
             )}
           </View>
@@ -424,10 +396,7 @@ function RecipesSection({
             className="rounded-lg border border-border bg-surface p-3 active:opacity-80"
           >
             <View className="flex-row items-center justify-between gap-2">
-              <Text
-                className="flex-1 text-sm font-medium text-foreground"
-                numberOfLines={1}
-              >
+              <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
                 {item.name}
               </Text>
               <Pressable
@@ -443,10 +412,8 @@ function RecipesSection({
             </View>
             <Text className="mt-1 text-xs text-muted">
               {item.components.length} component
-              {item.components.length === 1 ? "" : "s"} ·{" "}
-              {formatNumber(item.macros.calories)} cal ·{" "}
-              {formatNumber(item.macros.protein_g)}P /{" "}
-              {formatNumber(item.macros.fat_g)}F /{" "}
+              {item.components.length === 1 ? "" : "s"} · {formatNumber(item.macros.calories)} cal ·{" "}
+              {formatNumber(item.macros.protein_g)}P / {formatNumber(item.macros.fat_g)}F /{" "}
               {formatNumber(item.macros.carbs_g)}C
             </Text>
           </Pressable>

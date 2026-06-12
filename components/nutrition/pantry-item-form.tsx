@@ -3,13 +3,7 @@
 // before the API rejects with a 400. Server-side validation is the
 // backstop.
 import { useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import type { PantryItemPayload } from "@/lib/api";
 
 export function PantryItemForm({
@@ -28,15 +22,11 @@ export function PantryItemForm({
   onCancel?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [calories, setCalories] = useState(
-    initial?.calories?.toString() ?? "",
-  );
+  const [calories, setCalories] = useState(initial?.calories?.toString() ?? "");
   const [proteinG, setProteinG] = useState(initial?.protein_g?.toString() ?? "");
   const [fatG, setFatG] = useState(initial?.fat_g?.toString() ?? "");
   const [carbsG, setCarbsG] = useState(initial?.carbs_g?.toString() ?? "");
-  const [servingSize, setServingSize] = useState(
-    initial?.serving_size?.toString() ?? "1",
-  );
+  const [servingSize, setServingSize] = useState(initial?.serving_size?.toString() ?? "1");
   const [servingUnit, setServingUnit] = useState(initial?.serving_unit ?? "");
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -164,9 +154,7 @@ export function PantryItemForm({
           {busy ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <Text className="text-xs font-medium text-accent-fg">
-              {submitLabel}
-            </Text>
+            <Text className="text-xs font-medium text-accent-fg">{submitLabel}</Text>
           )}
         </Pressable>
       </View>
@@ -193,9 +181,7 @@ function LabeledInput({
 }) {
   return (
     <View className={`gap-1 ${flex ? "flex-1" : ""}`}>
-      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-        {label}
-      </Text>
+      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}

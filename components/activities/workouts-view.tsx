@@ -5,13 +5,7 @@
 // Weeks start on Monday to match the calendar tab and how lifters
 // mentally chunk a training week.
 import { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  RefreshControl,
-  SectionList,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, RefreshControl, SectionList, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import { listWorkouts, type Workout } from "@/lib/api";
@@ -134,12 +128,10 @@ export function WorkoutsView() {
           </View>
         ) : (
           <View className="rounded-lg border border-border bg-surface px-4 py-6">
-            <Text className="text-center text-sm font-medium text-foreground">
-              No workouts yet
-            </Text>
+            <Text className="text-center text-sm font-medium text-foreground">No workouts yet</Text>
             <Text className="mt-1 text-center text-xs text-muted">
-              Head to the Chat tab and tell the coach what you trained —
-              they&apos;ll log it for you.
+              Head to the Chat tab and tell the coach what you trained — they&apos;ll log it for
+              you.
             </Text>
           </View>
         )
@@ -157,9 +149,10 @@ export function WorkoutsView() {
 }
 
 function WeekHeader({ section }: { section: WeekSection }) {
-  const durationLabel = section.totalDurationMs > 0
-    ? formatDuration(section.totalDurationMs) + (section.hasUnclosedWorkout ? "+" : "")
-    : "—";
+  const durationLabel =
+    section.totalDurationMs > 0
+      ? formatDuration(section.totalDurationMs) + (section.hasUnclosedWorkout ? "+" : "")
+      : "—";
   return (
     <View className="flex-row items-baseline justify-between px-1">
       <Text className="text-xs font-semibold uppercase tracking-wider text-muted">

@@ -7,13 +7,13 @@ API for reads and the Python agent for chat.
 
 ## What's here in v1
 
-| Route | Purpose |
-| --- | --- |
-| `/login` | Continue with Google → JWT in Keychain |
-| `/(tabs)/activities` | Activities hub — Overview / Workouts / Running segments |
-| `/(tabs)/activities/workout/[id]` | One session's details (sets, reps, weights, PR badges) |
-| `/(tabs)/activities/run/[id]` | Run detail — stats + pace/HR/elevation charts |
-| `/(tabs)/chat` | Streaming chat with the agent — log new workouts, ask about progress |
+| Route                             | Purpose                                                              |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `/login`                          | Continue with Google → JWT in Keychain                               |
+| `/(tabs)/activities`              | Activities hub — Overview / Workouts / Running segments              |
+| `/(tabs)/activities/workout/[id]` | One session's details (sets, reps, weights, PR badges)               |
+| `/(tabs)/activities/run/[id]`     | Run detail — stats + pace/HR/elevation charts                        |
+| `/(tabs)/chat`                    | Streaming chat with the agent — log new workouts, ask about progress |
 
 Defered to a follow-up: Progress chart, Personal Records page,
 Calendar view, Exercises catalog, workout editing, multi-device chat
@@ -200,12 +200,12 @@ there's a reason; Internal TestFlight covers personal use forever
 
 ### Cost summary
 
-| Item              | Frequency      | Cost          |
-| ----------------- | -------------- | ------------- |
-| Apple Developer   | yearly         | $99           |
-| EAS Build         | per build      | free up to ~30/month for personal use |
-| EAS Update        | per OTA push   | free for hobby tier |
-| App Store listing | one-time       | included in $99 |
+| Item              | Frequency    | Cost                                  |
+| ----------------- | ------------ | ------------------------------------- |
+| Apple Developer   | yearly       | $99                                   |
+| EAS Build         | per build    | free up to ~30/month for personal use |
+| EAS Update        | per OTA push | free for hobby tier                   |
+| App Store listing | one-time     | included in $99                       |
 
 ## Releasing
 
@@ -217,7 +217,7 @@ merge to `main`:
   with `npx eas-cli update:republish --branch production`.
 - **Native change** (new native module, config plugin, SDK upgrade —
   i.e. the fingerprint has no existing build): `eas build
-  --auto-submit` cuts a new TestFlight build automatically. Install it
+--auto-submit` cuts a new TestFlight build automatically. Install it
   from the TestFlight app (enable TestFlight auto-updates and even
   that is hands-off). No version bumps needed —
   `runtimeVersion.policy: fingerprint` guarantees OTA updates only

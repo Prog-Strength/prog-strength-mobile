@@ -4,10 +4,7 @@
 // See initial-mobile-app-implementation SOW for the rationale.
 import { useState } from "react";
 import { View } from "react-native";
-import {
-  SegmentedControl,
-  type Segment,
-} from "@/components/segmented-control";
+import { SegmentedControl, type Segment } from "@/components/segmented-control";
 import { TodayView } from "@/components/nutrition/today-view";
 import { PantryView } from "@/components/nutrition/pantry-view";
 import { BodyweightView } from "@/components/nutrition/bodyweight-view";

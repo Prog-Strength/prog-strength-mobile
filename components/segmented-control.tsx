@@ -43,9 +43,7 @@ export function SegmentedControl<Value extends string>({
             } active:opacity-80`}
           >
             <Text
-              className={`text-xs font-medium ${
-                active ? "text-accent-fg" : "text-muted"
-              }`}
+              className={`text-xs font-medium ${active ? "text-accent-fg" : "text-muted"}`}
               numberOfLines={1}
             >
               {s.label}

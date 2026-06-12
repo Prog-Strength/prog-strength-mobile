@@ -8,12 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import {
-  getWorkout,
-  type Exercise,
-  type Workout,
-  type WorkoutExercise,
-} from "@/lib/api";
+import { getWorkout, type Exercise, type Workout, type WorkoutExercise } from "@/lib/api";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 import { useProfile } from "@/lib/profile-context";
 import { formatWeight } from "@/lib/units";
@@ -56,10 +51,7 @@ export default function WorkoutDetailScreen() {
   // Compute superset chunks unconditionally so the hook order is
   // stable across renders — the early returns below would otherwise
   // skip this hook when `workout` is null.
-  const chunks = useMemo(
-    () => groupBySuperset(workout?.exercises ?? []),
-    [workout?.exercises],
-  );
+  const chunks = useMemo(() => groupBySuperset(workout?.exercises ?? []), [workout?.exercises]);
 
   if (!workout && !error) {
     return (
@@ -81,10 +73,7 @@ export default function WorkoutDetailScreen() {
     return null;
   }
 
-  const title =
-    workout.name && workout.name.trim().length > 0
-      ? workout.name
-      : "Workout";
+  const title = workout.name && workout.name.trim().length > 0 ? workout.name : "Workout";
 
   return (
     <>
@@ -92,35 +81,28 @@ export default function WorkoutDetailScreen() {
       <ScrollView className="flex-1 bg-background">
         <View className="gap-4 px-4 py-4">
           <View className="rounded-lg border border-border bg-surface px-4 py-3">
-            <Text className="text-xs uppercase tracking-wider text-muted">
-              Performed
-            </Text>
+            <Text className="text-xs uppercase tracking-wider text-muted">Performed</Text>
             <Text className="mt-1 text-base font-medium text-foreground">
               {formatDateTime(workout.performed_at)}
             </Text>
             {workout.notes && workout.notes.trim().length > 0 && (
               <>
-                <Text className="mt-3 text-xs uppercase tracking-wider text-muted">
-                  Notes
-                </Text>
-                <Text className="mt-1 text-sm text-foreground">
-                  {workout.notes}
-                </Text>
+                <Text className="mt-3 text-xs uppercase tracking-wider text-muted">Notes</Text>
+                <Text className="mt-1 text-sm text-foreground">{workout.notes}</Text>
               </>
             )}
             {workout.personal_records_set.length > 0 && (
               <View className="mt-3 flex-row flex-wrap gap-2">
                 {workout.personal_records_set.map((pr) => {
-                  const name =
-                    exerciseByID.get(pr.exercise_id)?.name ?? pr.exercise_id;
+                  const name = exerciseByID.get(pr.exercise_id)?.name ?? pr.exercise_id;
                   return (
                     <View
                       key={pr.id}
                       className="rounded-full border border-accent/40 bg-accent/15 px-3 py-1"
                     >
                       <Text className="text-xs text-foreground">
-                        New PR · {name} · {formatWeight(pr.weight, pr.unit, preferred ?? pr.unit)}{" "}
-                        × {pr.reps}
+                        New PR · {name} · {formatWeight(pr.weight, pr.unit, preferred ?? pr.unit)} ×{" "}
+                        {pr.reps}
                       </Text>
                     </View>
                   );
@@ -195,9 +177,7 @@ function ExerciseCard({
   return (
     <View className="rounded-lg border border-border bg-surface px-4 py-3">
       <View className="flex-row items-baseline justify-between gap-3">
-        <Text className="flex-1 text-base font-medium text-foreground">
-          {name}
-        </Text>
+        <Text className="flex-1 text-base font-medium text-foreground">{name}</Text>
         <Text className="text-xs text-muted">
           {we.sets.length} {we.sets.length === 1 ? "set" : "sets"}
         </Text>
@@ -223,12 +203,9 @@ function SupersetCard({
   return (
     <View className="rounded-lg border border-border border-l-4 border-l-accent bg-surface px-4 py-3">
       <View className="flex-row items-baseline justify-between gap-3 border-b border-border/60 pb-2">
-        <Text className="text-xs font-semibold uppercase tracking-wider text-accent">
-          Superset
-        </Text>
+        <Text className="text-xs font-semibold uppercase tracking-wider text-accent">Superset</Text>
         <Text className="text-xs text-muted">
-          {chunk.exercises.length} exercises · {totalSets}{" "}
-          {totalSets === 1 ? "set" : "sets"}
+          {chunk.exercises.length} exercises · {totalSets} {totalSets === 1 ? "set" : "sets"}
         </Text>
       </View>
       {chunk.exercises.map((we, i) => {
@@ -243,7 +220,7 @@ function SupersetCard({
           >
             <View className="flex-row items-baseline justify-between gap-3">
               <Text className="flex-1 text-sm font-medium text-foreground">
-                <Text className="text-accent">{letter}</Text>  {name}
+                <Text className="text-accent">{letter}</Text> {name}
               </Text>
               <Text className="text-xs text-muted">
                 {we.sets.length} {we.sets.length === 1 ? "set" : "sets"}
@@ -270,10 +247,7 @@ function SetList({
   return (
     <View className="mt-2 gap-1">
       {sets.map((s, i) => (
-        <View
-          key={i}
-          className="flex-row items-baseline justify-between gap-3"
-        >
+        <View key={i} className="flex-row items-baseline justify-between gap-3">
           <Text className="text-xs text-muted">Set {i + 1}</Text>
           <Text className="text-sm tabular-nums text-foreground">
             {s.reps} × {formatWeight(s.weight, s.unit, preferred ?? s.unit)}

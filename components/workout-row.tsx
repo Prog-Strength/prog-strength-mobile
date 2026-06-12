@@ -31,10 +31,7 @@ export function WorkoutRow({
         ? names.join(" · ")
         : `${names.slice(0, 3).join(" · ")} +${names.length - 3} more`;
 
-  const setCount = workout.exercises.reduce(
-    (n, we) => n + we.sets.length,
-    0,
-  );
+  const setCount = workout.exercises.reduce((n, we) => n + we.sets.length, 0);
   const prCount = workout.personal_records_set.length;
 
   return (
@@ -44,15 +41,10 @@ export function WorkoutRow({
       className="rounded-lg border border-border bg-surface px-4 py-3 active:opacity-80"
     >
       <View className="flex-row items-baseline justify-between gap-3">
-        <Text
-          numberOfLines={1}
-          className="flex-1 text-base font-medium text-foreground"
-        >
+        <Text numberOfLines={1} className="flex-1 text-base font-medium text-foreground">
           {title}
         </Text>
-        <Text className="text-xs text-muted">
-          {formatDate(workout.performed_at)}
-        </Text>
+        <Text className="text-xs text-muted">{formatDate(workout.performed_at)}</Text>
       </View>
       <Text numberOfLines={2} className="mt-1 text-xs text-muted">
         {summary}

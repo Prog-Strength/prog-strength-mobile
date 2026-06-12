@@ -5,13 +5,7 @@
  * refresh; the chat screen re-refreshes after each completed turn so
  * the cap engages without an app restart.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { getMyUsage, type UsageData } from "@/lib/api";
 import { getToken } from "@/lib/auth";
 
@@ -37,11 +31,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  return (
-    <UsageContext.Provider value={{ usage, refresh }}>
-      {children}
-    </UsageContext.Provider>
-  );
+  return <UsageContext.Provider value={{ usage, refresh }}>{children}</UsageContext.Provider>;
 }
 
 export function useUsage(): UsageContextValue {

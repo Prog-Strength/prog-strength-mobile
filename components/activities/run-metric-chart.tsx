@@ -123,24 +123,19 @@ export function RunMetricChart({
   const [xMin, xMax] = xDomain;
   const [yMin, yMax] = yDomain;
 
-  const xScale = (v: number) =>
-    PADDING_LEFT + ((v - xMin) / (xMax - xMin)) * plotW;
+  const xScale = (v: number) => PADDING_LEFT + ((v - xMin) / (xMax - xMin)) * plotW;
 
   // invertY=true → smaller values at top (pace: faster = top).
   // invertY=false → larger values at top (standard chart convention).
   const yScale = (v: number) => {
     const norm = (v - yMin) / (yMax - yMin);
-    return invertY
-      ? PADDING_TOP + norm * plotH
-      : PADDING_TOP + (1 - norm) * plotH;
+    return invertY ? PADDING_TOP + norm * plotH : PADDING_TOP + (1 - norm) * plotH;
   };
 
   const yTicks = niceYTicks(yMin, yMax, 4);
   const xTicks = niceXTicks(xMin, xMax, Math.min(3, points.length));
 
-  const polyPoints = points
-    .map((p) => `${xScale(p.x)},${yScale(p.y)}`)
-    .join(" ");
+  const polyPoints = points.map((p) => `${xScale(p.x)},${yScale(p.y)}`).join(" ");
 
   return (
     <View

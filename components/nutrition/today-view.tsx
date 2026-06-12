@@ -9,13 +9,7 @@
 //   - Quick-add is a single bottom-sticky row: meal pills + item
 //     picker (collapsible list) + servings + Log button.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
@@ -129,9 +123,7 @@ export function TodayView() {
     meal: MealType,
   ): Promise<void> {
     const isToday = sameLocalDay(date, new Date());
-    const consumedAt = isToday
-      ? new Date()
-      : new Date(date.getTime() + 12 * 60 * 60 * 1000);
+    const consumedAt = isToday ? new Date() : new Date(date.getTime() + 12 * 60 * 60 * 1000);
     setLogBusy(true);
     setLogError(null);
     return Promise.resolve(getToken())
@@ -141,9 +133,7 @@ export function TodayView() {
           throw new Error("not signed in");
         }
         const entry = await createNutritionLogEntry(t, {
-          ...(source.kind === "pantry"
-            ? { pantry_item_id: source.id }
-            : { recipe_id: source.id }),
+          ...(source.kind === "pantry" ? { pantry_item_id: source.id } : { recipe_id: source.id }),
           quantity,
           meal,
           consumed_at: consumedAt.toISOString(),
@@ -166,9 +156,7 @@ export function TodayView() {
         if (!t) return;
         await Promise.all(ids.map((id) => deleteNutritionLogEntry(t, id)));
         const removed = new Set(ids);
-        setEntries((prev) =>
-          prev ? prev.filter((e) => !removed.has(e.id)) : prev,
-        );
+        setEntries((prev) => (prev ? prev.filter((e) => !removed.has(e.id)) : prev));
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setRowBusyID(null));
@@ -184,10 +172,7 @@ export function TodayView() {
         </View>
       )}
 
-      <ScrollView
-        className="flex-1"
-        contentContainerClassName="px-4 pb-4 gap-4"
-      >
+      <ScrollView className="flex-1" contentContainerClassName="px-4 pb-4 gap-4">
         {goals && (
           <MacroGoalRings
             totals={totals}
@@ -247,13 +232,7 @@ export function TodayView() {
 
 // --- Date nav -----------------------------------------------------
 
-function DateNav({
-  value,
-  onChange,
-}: {
-  value: Date;
-  onChange: (d: Date) => void;
-}) {
+function DateNav({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
   const isToday = sameLocalDay(value, new Date());
   const label = value.toLocaleDateString("en-US", {
     weekday: "short",
@@ -291,7 +270,6 @@ function NavBtn({ label, onPress }: { label: string; onPress: () => void }) {
     </Pressable>
   );
 }
-
 
 // --- Meal sections ------------------------------------------------
 
@@ -431,17 +409,13 @@ function MealSection({
   return (
     <View className="gap-2">
       <View className="flex-row items-baseline justify-between gap-3">
-        <Text className="text-sm font-semibold text-foreground">
-          {MEAL_LABELS[meal]}
-        </Text>
+        <Text className="text-sm font-semibold text-foreground">{MEAL_LABELS[meal]}</Text>
         <Text className="text-xs tabular-nums text-muted">
           {entries.length === 0
             ? "No entries"
             : `${formatNumber(subtotal.calories)} cal · P ${formatNumber(
                 subtotal.protein_g,
-              )}g · F ${formatNumber(subtotal.fat_g)}g · C ${formatNumber(
-                subtotal.carbs_g,
-              )}g`}
+              )}g · F ${formatNumber(subtotal.fat_g)}g · C ${formatNumber(subtotal.carbs_g)}g`}
         </Text>
       </View>
       {groups.map((g) => {
@@ -474,14 +448,9 @@ function EntryGroupRow({
       <View className="flex-1 gap-0.5">
         <Text className="text-sm font-medium text-foreground" numberOfLines={1}>
           {group.name}{" "}
-          <Text className="text-xs tabular-nums text-muted">
-            × {formatNumber(group.quantity)}
-          </Text>
+          <Text className="text-xs tabular-nums text-muted">× {formatNumber(group.quantity)}</Text>
           {group.isRecipe && (
-            <Text className="ml-1 text-[10px] uppercase tracking-wider text-muted">
-              {" "}
-              recipe
-            </Text>
+            <Text className="ml-1 text-[10px] uppercase tracking-wider text-muted"> recipe</Text>
           )}
           {logCount > 1 && (
             <Text className="text-[10px] uppercase tracking-wider text-muted">
@@ -491,17 +460,15 @@ function EntryGroupRow({
           )}
         </Text>
         <Text className="text-xs tabular-nums text-muted">
-          {formatNumber(group.calories)} cal · P {formatNumber(group.protein_g)}g
-          · F {formatNumber(group.fat_g)}g · C {formatNumber(group.carbs_g)}g
+          {formatNumber(group.calories)} cal · P {formatNumber(group.protein_g)}g · F{" "}
+          {formatNumber(group.fat_g)}g · C {formatNumber(group.carbs_g)}g
         </Text>
       </View>
       <Pressable
         onPress={onDelete}
         disabled={busy}
         accessibilityRole="button"
-        accessibilityLabel={
-          logCount > 1 ? `Delete all ${logCount} logs` : "Delete"
-        }
+        accessibilityLabel={logCount > 1 ? `Delete all ${logCount} logs` : "Delete"}
         className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
       >
         {busy ? (

@@ -45,9 +45,7 @@ export function MacroGoalRings({
   return (
     <View className="rounded-lg border border-border bg-surface px-3 py-3">
       <View className="mb-2 flex-row items-center justify-between gap-3">
-        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-          Today
-        </Text>
+        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">Today</Text>
         <Pressable
           onPress={onSetGoals}
           accessibilityRole="button"
@@ -60,9 +58,7 @@ export function MacroGoalRings({
       </View>
 
       {!goalsAreSet && (
-        <Text className="mb-2 text-xs text-muted">
-          Set targets to see how close today is.
-        </Text>
+        <Text className="mb-2 text-xs text-muted">Set targets to see how close today is.</Text>
       )}
 
       <View className="flex-row flex-wrap gap-2">
@@ -133,12 +129,8 @@ function RingCell({
   const over = ratio > 1;
   const pctText = goal > 0 ? `${Math.round(ratio * 100)}%` : "—";
 
-  const intakeText =
-    unit === "g"
-      ? `${formatGrams(intake)} g`
-      : `${Math.round(intake)} kcal`;
-  const goalText =
-    goal > 0 ? (unit === "g" ? `${goal} g` : `${goal} kcal`) : "—";
+  const intakeText = unit === "g" ? `${formatGrams(intake)} g` : `${Math.round(intake)} kcal`;
+  const goalText = goal > 0 ? (unit === "g" ? `${goal} g` : `${goal} kcal`) : "—";
 
   return (
     <Pressable

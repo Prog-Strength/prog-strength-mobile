@@ -17,18 +17,8 @@
 // and the parent renders the details panel below the chart.
 import { useMemo, useState } from "react";
 import { View } from "react-native";
-import Svg, {
-  Circle,
-  G,
-  Line,
-  Rect,
-  Text as SvgText,
-} from "react-native-svg";
-import type {
-  ExerciseBaseline,
-  MuscleGroupProgressionPoint,
-  Trendline,
-} from "@/lib/api";
+import Svg, { Circle, G, Line, Rect, Text as SvgText } from "react-native-svg";
+import type { ExerciseBaseline, MuscleGroupProgressionPoint, Trendline } from "@/lib/api";
 
 const DEFAULT_HEIGHT = 240;
 const PADDING_LEFT = 36;
@@ -57,9 +47,7 @@ const EXERCISE_COLORS = [
   "#84cc16",
 ];
 
-export function exerciseColorMap(
-  baselines: ExerciseBaseline[],
-): Map<string, string> {
+export function exerciseColorMap(baselines: ExerciseBaseline[]): Map<string, string> {
   const m = new Map<string, string>();
   baselines.forEach((b, i) => {
     m.set(b.exercise_id, EXERCISE_COLORS[i % EXERCISE_COLORS.length]);
@@ -130,10 +118,8 @@ export function ProgressionChart({
   const [xMin, xMax] = xDomain;
   const [yMin, yMax] = yDomain;
 
-  const xScale = (t: number) =>
-    PADDING_LEFT + ((t - xMin) / (xMax - xMin)) * plotW;
-  const yScale = (v: number) =>
-    PADDING_TOP + (1 - (v - yMin) / (yMax - yMin)) * plotH;
+  const xScale = (t: number) => PADDING_LEFT + ((t - xMin) / (xMax - xMin)) * plotW;
+  const yScale = (v: number) => PADDING_TOP + (1 - (v - yMin) / (yMax - yMin)) * plotH;
 
   // Y-axis ticks — 4 evenly-spaced values across the domain. Rounded
   // to nice percentages where possible.
@@ -142,12 +128,8 @@ export function ProgressionChart({
   const xTicks = niceXTicks(xMin, xMax, 3);
 
   const refY = yScale(1.0);
-  const trendStartX = trendline
-    ? xScale(new Date(trendline.start_at).getTime())
-    : null;
-  const trendEndX = trendline
-    ? xScale(new Date(trendline.end_at).getTime())
-    : null;
+  const trendStartX = trendline ? xScale(new Date(trendline.start_at).getTime()) : null;
+  const trendEndX = trendline ? xScale(new Date(trendline.end_at).getTime()) : null;
   const trendStartY = trendline ? yScale(trendline.start_value) : null;
   const trendEndY = trendline ? yScale(trendline.end_value) : null;
 

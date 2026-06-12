@@ -13,9 +13,7 @@
 import type { AudioPlayer as AudioPlayerType } from "expo-audio";
 
 type AudioPlayerModule = {
-  createAudioPlayer: (
-    source?: string | { uri: string } | null,
-  ) => AudioPlayerType;
+  createAudioPlayer: (source?: string | { uri: string } | null) => AudioPlayerType;
 };
 
 let audioModule: AudioPlayerModule | null = null;

@@ -30,9 +30,7 @@ export function UnitToggle<T extends string>({
             } ${i > 0 ? "border-l border-border" : ""}`}
           >
             <Text
-              className={`text-sm font-medium ${
-                active ? "text-accent-fg" : "text-foreground"
-              }`}
+              className={`text-sm font-medium ${active ? "text-accent-fg" : "text-foreground"}`}
             >
               {opt.label}
             </Text>

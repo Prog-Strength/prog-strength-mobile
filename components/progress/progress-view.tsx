@@ -10,13 +10,7 @@
 //   - Tables are simplified: no fixed columns / horizontal scroll, just
 //     a stacked card per row. Phone-screen reality.
 import { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
@@ -27,10 +21,7 @@ import {
   type MuscleGroupProgressionPoint,
   type Workout,
 } from "@/lib/api";
-import {
-  exerciseColorMap,
-  ProgressionChart,
-} from "@/components/progress/progression-chart";
+import { exerciseColorMap, ProgressionChart } from "@/components/progress/progression-chart";
 
 type Timeframe = "30d" | "60d" | "90d";
 
@@ -60,13 +51,11 @@ export function ProgressView() {
   const router = useRouter();
   const [muscleGroup, setMuscleGroup] = useState<string>("chest");
   const [timeframe, setTimeframe] = useState<Timeframe>("90d");
-  const [progression, setProgression] =
-    useState<MuscleGroupProgression | null>(null);
+  const [progression, setProgression] = useState<MuscleGroupProgression | null>(null);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPoint, setSelectedPoint] =
-    useState<MuscleGroupProgressionPoint | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<MuscleGroupProgressionPoint | null>(null);
 
   useEffect(() => {
     Promise.resolve(getToken())
@@ -104,10 +93,7 @@ export function ProgressView() {
   }, [muscleGroup, timeframe, router]);
 
   return (
-    <ScrollView
-      contentContainerClassName="gap-3 px-4 pb-8"
-      keyboardShouldPersistTaps="handled"
-    >
+    <ScrollView contentContainerClassName="gap-3 px-4 pb-8" keyboardShouldPersistTaps="handled">
       <MuscleGroupPills value={muscleGroup} onChange={setMuscleGroup} />
       <TimeframePills value={timeframe} onChange={setTimeframe} />
 
@@ -148,13 +134,7 @@ export function ProgressView() {
 
 // --- selectors ----------------------------------------------------
 
-function MuscleGroupPills({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
+function MuscleGroupPills({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <View className="flex-row flex-wrap gap-1.5 pt-1">
       {MUSCLE_GROUPS.map((mg) => {
@@ -166,16 +146,10 @@ function MuscleGroupPills({
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             className={`rounded-full border px-3 py-1 ${
-              active
-                ? "border-accent bg-accent"
-                : "border-border bg-surface"
+              active ? "border-accent bg-accent" : "border-border bg-surface"
             } active:opacity-80`}
           >
-            <Text
-              className={`text-xs font-medium ${
-                active ? "text-accent-fg" : "text-muted"
-              }`}
-            >
+            <Text className={`text-xs font-medium ${active ? "text-accent-fg" : "text-muted"}`}>
               {mg.label}
             </Text>
           </Pressable>
@@ -203,16 +177,10 @@ function TimeframePills({
             accessibilityRole="button"
             accessibilityState={{ selected: active }}
             className={`rounded-full border px-3 py-1 ${
-              active
-                ? "border-accent bg-accent"
-                : "border-border bg-surface"
+              active ? "border-accent bg-accent" : "border-border bg-surface"
             } active:opacity-80`}
           >
-            <Text
-              className={`text-xs ${
-                active ? "text-accent-fg" : "text-muted"
-              }`}
-            >
+            <Text className={`text-xs ${active ? "text-accent-fg" : "text-muted"}`}>
               Last {tf.label}
             </Text>
           </Pressable>
@@ -236,32 +204,23 @@ function ProgressionContent({
   onSelectPoint: (p: MuscleGroupProgressionPoint | null) => void;
 }) {
   const { points, trendline, exercise_baselines } = progression;
-  const colorMap = useMemo(
-    () => exerciseColorMap(exercise_baselines),
-    [exercise_baselines],
-  );
+  const colorMap = useMemo(() => exerciseColorMap(exercise_baselines), [exercise_baselines]);
 
   // Stat tile values. Same definitions as web /progress so the
   // two implementations agree on what's "best."
   const trendPct =
     trendline && trendline.start_value > 0
-      ? ((trendline.end_value - trendline.start_value) /
-          trendline.start_value) *
-        100
+      ? ((trendline.end_value - trendline.start_value) / trendline.start_value) * 100
       : null;
   const bestPoint = useMemo(
     () =>
       points.reduce<MuscleGroupProgressionPoint | null>(
-        (acc, p) =>
-          acc === null || p.normalized_max > acc.normalized_max ? p : acc,
+        (acc, p) => (acc === null || p.normalized_max > acc.normalized_max ? p : acc),
         null,
       ),
     [points],
   );
-  const exerciseCount = useMemo(
-    () => new Set(points.map((p) => p.exercise_id)).size,
-    [points],
-  );
+  const exerciseCount = useMemo(() => new Set(points.map((p) => p.exercise_id)).size, [points]);
 
   const selectedKey = selectedPoint
     ? `${selectedPoint.workout_id}:${selectedPoint.exercise_id}`
@@ -284,9 +243,7 @@ function ProgressionContent({
           }
         />
         <StatTile
-          value={
-            bestPoint ? `${formatPercent(bestPoint.normalized_max)}` : "—"
-          }
+          value={bestPoint ? `${formatPercent(bestPoint.normalized_max)}` : "—"}
           label={bestPoint ? `Best · ${formatDate(bestPoint.performed_at)}` : "Best"}
         />
         <StatTile
@@ -340,9 +297,7 @@ function StatTile({
         : "text-foreground";
   return (
     <View className="flex-1 rounded-lg border border-border bg-surface px-3 py-2">
-      <Text className={`text-lg font-semibold tabular-nums ${toneClass}`}>
-        {value}
-      </Text>
+      <Text className={`text-lg font-semibold tabular-nums ${toneClass}`}>{value}</Text>
       <Text
         className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted"
         numberOfLines={1}
@@ -371,14 +326,8 @@ function SelectedPointCard({
       className="gap-1 rounded-lg border border-border bg-surface p-3 active:opacity-80"
     >
       <View className="flex-row items-center gap-2">
-        <View
-          style={{ backgroundColor: color }}
-          className="h-2 w-2 rounded-full"
-        />
-        <Text
-          className="flex-1 text-sm font-medium text-foreground"
-          numberOfLines={1}
-        >
+        <View style={{ backgroundColor: color }} className="h-2 w-2 rounded-full" />
+        <Text className="flex-1 text-sm font-medium text-foreground" numberOfLines={1}>
           {point.exercise_name}
         </Text>
         <Text className="text-[10px] uppercase tracking-wider text-muted">
@@ -389,8 +338,8 @@ function SelectedPointCard({
         {formatPercent(point.normalized_max)} of baseline
       </Text>
       <Text className="text-xs text-muted">
-        {formatNumber(point.avg_estimated_1rm)} {point.unit} avg ·{" "}
-        {point.set_count} {point.set_count === 1 ? "set" : "sets"}
+        {formatNumber(point.avg_estimated_1rm)} {point.unit} avg · {point.set_count}{" "}
+        {point.set_count === 1 ? "set" : "sets"}
         {point.max_estimated_1rm > point.avg_estimated_1rm &&
           ` · max ${formatNumber(point.max_estimated_1rm)} ${point.unit}`}
       </Text>
@@ -409,10 +358,7 @@ function Legend({
   return (
     <View className="flex-row flex-wrap gap-x-3 gap-y-1">
       {baselines.map((b) => (
-        <View
-          key={b.exercise_id}
-          className="flex-row items-center gap-1.5"
-        >
+        <View key={b.exercise_id} className="flex-row items-center gap-1.5">
           <View
             style={{ backgroundColor: colorMap.get(b.exercise_id) ?? "#3b82f6" }}
             className="h-2 w-3 rounded-full"
@@ -423,9 +369,7 @@ function Legend({
           </Text>
         </View>
       ))}
-      <Text className="text-[10px] uppercase tracking-wider text-muted">
-        Dashed = trend
-      </Text>
+      <Text className="text-[10px] uppercase tracking-wider text-muted">Dashed = trend</Text>
     </View>
   );
 }
@@ -457,21 +401,14 @@ function TablesSection({
       ? points.filter((p) => p.exercise_id === filterExerciseID)
       : points;
     return [...filtered].sort(
-      (a, b) =>
-        new Date(b.performed_at).getTime() -
-        new Date(a.performed_at).getTime(),
+      (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime(),
     );
   }, [points, filterExerciseID]);
 
-  const setsRows = useMemo(
-    () => buildSetsRows(workouts, baselineByID),
-    [workouts, baselineByID],
-  );
+  const setsRows = useMemo(() => buildSetsRows(workouts, baselineByID), [workouts, baselineByID]);
   const filteredSetsRows = useMemo(
     () =>
-      filterExerciseID
-        ? setsRows.filter((r) => r.exercise_id === filterExerciseID)
-        : setsRows,
+      filterExerciseID ? setsRows.filter((r) => r.exercise_id === filterExerciseID) : setsRows,
     [setsRows, filterExerciseID],
   );
 
@@ -489,8 +426,7 @@ function TablesSection({
     }
     return m;
   }, [setsRows]);
-  const activeCounts =
-    view === "estimates" ? estimateCountByExercise : setsCountByExercise;
+  const activeCounts = view === "estimates" ? estimateCountByExercise : setsCountByExercise;
   const activeTotal = view === "estimates" ? points.length : setsRows.length;
 
   return (
@@ -553,9 +489,7 @@ function ViewToggleButton({
       } active:opacity-80`}
     >
       <Text
-        className={`text-center text-xs font-medium ${
-          active ? "text-accent-fg" : "text-muted"
-        }`}
+        className={`text-center text-xs font-medium ${active ? "text-accent-fg" : "text-muted"}`}
         numberOfLines={1}
       >
         {label}
@@ -584,19 +518,8 @@ function FilterPill({
         active ? "border-accent bg-accent/15" : "border-border bg-background"
       } active:opacity-80`}
     >
-      {color && (
-        <View
-          style={{ backgroundColor: color }}
-          className="h-2 w-2 rounded-full"
-        />
-      )}
-      <Text
-        className={`text-[10px] ${
-          active ? "text-foreground" : "text-muted"
-        }`}
-      >
-        {label}
-      </Text>
+      {color && <View style={{ backgroundColor: color }} className="h-2 w-2 rounded-full" />}
+      <Text className={`text-[10px] ${active ? "text-foreground" : "text-muted"}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -627,20 +550,13 @@ function EstimatesRows({
             accessibilityRole="button"
             className="flex-row items-center gap-2 rounded-md border border-border bg-background p-2 active:opacity-80"
           >
-            <View
-              style={{ backgroundColor: color }}
-              className="h-2 w-2 rounded-full"
-            />
+            <View style={{ backgroundColor: color }} className="h-2 w-2 rounded-full" />
             <View className="flex-1">
-              <Text
-                className="text-xs font-medium text-foreground"
-                numberOfLines={1}
-              >
+              <Text className="text-xs font-medium text-foreground" numberOfLines={1}>
                 {p.exercise_name}
               </Text>
               <Text className="text-[10px] text-muted">
-                {formatDate(p.performed_at)} · {p.set_count}{" "}
-                {p.set_count === 1 ? "set" : "sets"}
+                {formatDate(p.performed_at)} · {p.set_count} {p.set_count === 1 ? "set" : "sets"}
               </Text>
             </View>
             <View className="items-end">
@@ -710,23 +626,15 @@ function buildSetsRows(
     }
   }
   rows.sort((a, b) => {
-    const t =
-      new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime();
+    const t = new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime();
     if (t !== 0) return t;
-    if (a.exercise_id !== b.exercise_id)
-      return a.exercise_name.localeCompare(b.exercise_name);
+    if (a.exercise_id !== b.exercise_id) return a.exercise_name.localeCompare(b.exercise_name);
     return b.weight - a.weight;
   });
   return rows;
 }
 
-function SetsRows({
-  rows,
-  colorMap,
-}: {
-  rows: SetsTableRow[];
-  colorMap: Map<string, string>;
-}) {
+function SetsRows({ rows, colorMap }: { rows: SetsTableRow[]; colorMap: Map<string, string> }) {
   const router = useRouter();
   if (rows.length === 0) {
     return (
@@ -746,20 +654,12 @@ function SetsRows({
             accessibilityRole="button"
             className="flex-row items-center gap-2 rounded-md border border-border bg-background p-2 active:opacity-80"
           >
-            <View
-              style={{ backgroundColor: color }}
-              className="h-2 w-2 rounded-full"
-            />
+            <View style={{ backgroundColor: color }} className="h-2 w-2 rounded-full" />
             <View className="flex-1">
-              <Text
-                className="text-xs font-medium text-foreground"
-                numberOfLines={1}
-              >
+              <Text className="text-xs font-medium text-foreground" numberOfLines={1}>
                 {r.exercise_name}
               </Text>
-              <Text className="text-[10px] text-muted">
-                {formatDate(r.performed_at)}
-              </Text>
+              <Text className="text-[10px] text-muted">{formatDate(r.performed_at)}</Text>
             </View>
             <Text className="text-xs font-semibold tabular-nums text-foreground">
               {r.set_count} × {r.reps} @ {formatNumber(r.weight)} {r.unit}

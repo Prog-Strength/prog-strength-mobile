@@ -8,14 +8,7 @@
 // Single GET /bodyweight on mount. All filtering / aggregation /
 // pagination happens client-side off the one fetched list.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
@@ -61,15 +54,12 @@ export function BodyweightView() {
   const entriesInRange = useMemo(() => {
     if (!entries) return [];
     const sorted = [...entries].sort(
-      (a, b) =>
-        new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime(),
+      (a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime(),
     );
     const rangeDef = RANGES.find((r) => r.key === range);
     if (!rangeDef || rangeDef.days === null) return sorted;
     const cutoffMs = Date.now() - rangeDef.days * 86_400_000;
-    return sorted.filter(
-      (e) => new Date(e.measured_at).getTime() >= cutoffMs,
-    );
+    return sorted.filter((e) => new Date(e.measured_at).getTime() >= cutoffMs);
   }, [entries, range]);
 
   const stats: BodyweightStats | null = useMemo(
@@ -77,10 +67,7 @@ export function BodyweightView() {
     [entriesInRange, preferred],
   );
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(entriesInRange.length / PAGE_SIZE),
-  );
+  const totalPages = Math.max(1, Math.ceil(entriesInRange.length / PAGE_SIZE));
   const pageEntries = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
     return entriesInRange.slice(start, start + PAGE_SIZE);
@@ -164,10 +151,7 @@ export function BodyweightView() {
   }
 
   return (
-    <ScrollView
-      className="flex-1"
-      contentContainerClassName="gap-3 px-4 pb-8 pt-1"
-    >
+    <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-8 pt-1">
       {error && (
         <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
           <Text className="text-xs text-danger">{error}</Text>
@@ -208,14 +192,10 @@ export function BodyweightView() {
             )}
           </Pressable>
         </View>
-        {formError && (
-          <Text className="text-xs text-danger">{formError}</Text>
-        )}
+        {formError && <Text className="text-xs text-danger">{formError}</Text>}
       </View>
 
-      <Text className="mt-1 text-sm font-semibold text-foreground">
-        Entries
-      </Text>
+      <Text className="mt-1 text-sm font-semibold text-foreground">Entries</Text>
 
       {entriesInRange.length === 0 ? (
         <View className="rounded-lg border border-border bg-surface px-4 py-8">
@@ -254,25 +234,15 @@ export function BodyweightView() {
 
 // --- Range tabs --------------------------------------------------
 
-function RangeTabs({
-  value,
-  onChange,
-}: {
-  value: RangeKey;
-  onChange: (v: RangeKey) => void;
-}) {
+function RangeTabs({ value, onChange }: { value: RangeKey; onChange: (v: RangeKey) => void }) {
   // Border-b on the parent doubles as the SOW's "white separator"
   // between toolbar and content — same pattern the web side uses.
   return (
     <View className="flex-row items-center gap-2 border-b border-border pb-3">
       {RANGES.map((r) => {
         const selected = r.key === value;
-        const bgClass = selected
-          ? "bg-accent"
-          : "bg-surface border border-border";
-        const textClass = selected
-          ? "text-accent-fg"
-          : "text-foreground";
+        const bgClass = selected ? "bg-accent" : "bg-surface border border-border";
+        const textClass = selected ? "text-accent-fg" : "text-foreground";
         return (
           <Pressable
             key={r.key}
@@ -287,9 +257,7 @@ function RangeTabs({
             style={selected ? { transform: [{ translateY: 1 }] } : undefined}
             className={`rounded-md px-3 py-1.5 ${bgClass} active:opacity-80`}
           >
-            <Text className={`text-xs font-medium ${textClass}`}>
-              {r.label}
-            </Text>
+            <Text className={`text-xs font-medium ${textClass}`}>{r.label}</Text>
           </Pressable>
         );
       })}
@@ -308,11 +276,7 @@ function StatTilesGrid({ stats }: { stats: BodyweightStats | null }) {
         label="Avg"
         value={stats ? formatNumber(stats.avg) : "—"}
         unit={stats?.unit}
-        sublabel={
-          stats
-            ? `${stats.count} reading${stats.count === 1 ? "" : "s"}`
-            : "No data"
-        }
+        sublabel={stats ? `${stats.count} reading${stats.count === 1 ? "" : "s"}` : "No data"}
       />
       <StatTile
         label="Min"
@@ -359,9 +323,7 @@ function StatTile({
     <View className="min-w-[45%] flex-1 rounded-lg border border-border bg-surface p-3">
       <Text className="text-lg font-semibold tabular-nums text-foreground">
         {value}
-        {unit && (
-          <Text className="text-sm font-normal text-muted"> {unit}</Text>
-        )}
+        {unit && <Text className="text-sm font-normal text-muted"> {unit}</Text>}
       </Text>
       <Text className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
         {label}
@@ -390,9 +352,7 @@ function EntryCard({
         <Text className="text-sm font-medium text-foreground tabular-nums">
           {formatWeight(entry.weight, entry.unit, preferred)}
         </Text>
-        <Text className="mt-0.5 text-xs text-muted">
-          {formatLocalDateTime(entry.measured_at)}
-        </Text>
+        <Text className="mt-0.5 text-xs text-muted">{formatLocalDateTime(entry.measured_at)}</Text>
       </View>
       <Pressable
         onPress={onDelete}
@@ -431,16 +391,8 @@ function Pagination({
         Page {page}/{totalPages} · {totalCount} total
       </Text>
       <View className="flex-row gap-1">
-        <PageBtn
-          label="‹"
-          disabled={page === 1}
-          onPress={() => onPageChange(page - 1)}
-        />
-        <PageBtn
-          label="›"
-          disabled={page === totalPages}
-          onPress={() => onPageChange(page + 1)}
-        />
+        <PageBtn label="‹" disabled={page === 1} onPress={() => onPageChange(page - 1)} />
+        <PageBtn label="›" disabled={page === totalPages} onPress={() => onPageChange(page + 1)} />
       </View>
     </View>
   );
@@ -493,11 +445,7 @@ function UnitToggle({
               active ? "bg-accent" : ""
             } active:opacity-80 disabled:opacity-50`}
           >
-            <Text
-              className={`text-xs font-medium ${
-                active ? "text-accent-fg" : "text-muted"
-              }`}
-            >
+            <Text className={`text-xs font-medium ${active ? "text-accent-fg" : "text-muted"}`}>
               {u}
             </Text>
           </Pressable>

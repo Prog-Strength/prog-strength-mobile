@@ -103,10 +103,7 @@ export default function RunDetailScreen() {
           const updated = await renameRunningSession(token, run.id, newName.trim());
           setRun(updated);
         } catch (err) {
-          Alert.alert(
-            "Rename failed",
-            err instanceof Error ? err.message : String(err),
-          );
+          Alert.alert("Rename failed", err instanceof Error ? err.message : String(err));
         }
       },
       "plain-text",
@@ -116,30 +113,23 @@ export default function RunDetailScreen() {
 
   const handleDelete = useCallback(() => {
     if (!run) return;
-    Alert.alert(
-      "Delete run?",
-      "This run and all its trackpoints will be permanently removed.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const token = await getToken();
-              if (!token) return;
-              await deleteRunningSession(token, run.id);
-              router.back();
-            } catch (err) {
-              Alert.alert(
-                "Delete failed",
-                err instanceof Error ? err.message : String(err),
-              );
-            }
-          },
+    Alert.alert("Delete run?", "This run and all its trackpoints will be permanently removed.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const token = await getToken();
+            if (!token) return;
+            await deleteRunningSession(token, run.id);
+            router.back();
+          } catch (err) {
+            Alert.alert("Delete failed", err instanceof Error ? err.message : String(err));
+          }
         },
-      ],
-    );
+      },
+    ]);
   }, [run, router]);
 
   const handleEllipsis = useCallback(() => {
@@ -179,9 +169,7 @@ export default function RunDetailScreen() {
   }
 
   const title =
-    run.name && run.name.trim().length > 0
-      ? run.name.trim()
-      : runFallbackName(run.start_time);
+    run.name && run.name.trim().length > 0 ? run.name.trim() : runFallbackName(run.start_time);
 
   return (
     <>
@@ -210,13 +198,7 @@ export default function RunDetailScreen() {
 // Content (separate component to avoid hooks-before-return issues)
 // ---------------------------------------------------------------------------
 
-function RunDetailContent({
-  run,
-  unit,
-}: {
-  run: RunningSession;
-  unit: DistanceUnit;
-}) {
+function RunDetailContent({ run, unit }: { run: RunningSession; unit: DistanceUnit }) {
   const trackpoints = useMemo(() => run.trackpoints ?? [], [run.trackpoints]);
 
   // --- chart point sets ------------------------------------------------------
@@ -226,8 +208,7 @@ function RunDetailContent({
     () =>
       trackpoints
         .filter(
-          (tp): tp is RunningTrackpoint & { pace_sec_per_km: number } =>
-            tp.pace_sec_per_km != null,
+          (tp): tp is RunningTrackpoint & { pace_sec_per_km: number } => tp.pace_sec_per_km != null,
         )
         .map((tp) => ({
           x: tp.distance_meters / (unit === "mi" ? METERS_PER_MILE : METERS_PER_KM),
@@ -241,8 +222,7 @@ function RunDetailContent({
     () =>
       trackpoints
         .filter(
-          (tp): tp is RunningTrackpoint & { heart_rate_bpm: number } =>
-            tp.heart_rate_bpm != null,
+          (tp): tp is RunningTrackpoint & { heart_rate_bpm: number } => tp.heart_rate_bpm != null,
         )
         .map((tp) => ({
           x: tp.distance_meters / (unit === "mi" ? METERS_PER_MILE : METERS_PER_KM),
@@ -269,37 +249,24 @@ function RunDetailContent({
 
   const distance = `${formatDistance(run.distance_meters, unit)} ${unit}`;
   const avgPace =
-    run.avg_pace_sec_per_km != null
-      ? `${formatPace(run.avg_pace_sec_per_km, unit)} /${unit}`
-      : "—";
+    run.avg_pace_sec_per_km != null ? `${formatPace(run.avg_pace_sec_per_km, unit)} /${unit}` : "—";
   const duration = formatRunDuration(run.duration_seconds);
   const bestPace =
     run.best_pace_sec_per_km != null
       ? `${formatPace(run.best_pace_sec_per_km, unit)} /${unit}`
       : "—";
-  const avgHr =
-    run.avg_heart_rate_bpm != null
-      ? `${Math.round(run.avg_heart_rate_bpm)} bpm`
-      : "—";
-  const maxHr =
-    run.max_heart_rate_bpm != null
-      ? `${Math.round(run.max_heart_rate_bpm)} bpm`
-      : "—";
-  const calories =
-    run.total_calories != null ? String(Math.round(run.total_calories)) : "—";
+  const avgHr = run.avg_heart_rate_bpm != null ? `${Math.round(run.avg_heart_rate_bpm)} bpm` : "—";
+  const maxHr = run.max_heart_rate_bpm != null ? `${Math.round(run.max_heart_rate_bpm)} bpm` : "—";
+  const calories = run.total_calories != null ? String(Math.round(run.total_calories)) : "—";
   const elevGain =
-    run.elevation_gain_meters != null
-      ? `${Math.round(run.elevation_gain_meters)} m`
-      : "—";
+    run.elevation_gain_meters != null ? `${Math.round(run.elevation_gain_meters)} m` : "—";
 
   return (
     <ScrollView className="flex-1 bg-background">
       <View className="gap-4 px-4 py-4">
         {/* Date */}
         <View className="rounded-lg border border-border bg-surface px-4 py-3">
-          <Text className="text-xs uppercase tracking-wider text-muted">
-            Date
-          </Text>
+          <Text className="text-xs uppercase tracking-wider text-muted">Date</Text>
           <Text className="mt-1 text-base font-medium text-foreground">
             {formatDateTime(run.start_time)}
           </Text>
@@ -387,10 +354,7 @@ function StatTile({ label, value }: { label: string; value: string }) {
       style={{ flexBasis: "47%" }}
       className="rounded-lg border border-border bg-surface px-3 py-3"
     >
-      <Text
-        className="text-base font-semibold tabular-nums text-foreground"
-        numberOfLines={1}
-      >
+      <Text className="text-base font-semibold tabular-nums text-foreground" numberOfLines={1}>
         {value}
       </Text>
       <Text
@@ -403,13 +367,7 @@ function StatTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ChartCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View className="rounded-lg border border-border bg-surface px-4 py-3">
       <Text className="mb-3 text-sm font-semibold text-foreground">{title}</Text>

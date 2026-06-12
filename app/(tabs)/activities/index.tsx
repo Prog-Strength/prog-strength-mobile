@@ -28,9 +28,7 @@ export default function ActivitiesScreen() {
             { value: "running", label: "Running" },
           ]}
         />
-        {view !== "workouts" && (
-          <TimeframePills value={timeframe} onChange={setTimeframe} />
-        )}
+        {view !== "workouts" && <TimeframePills value={timeframe} onChange={setTimeframe} />}
       </View>
       {view === "overview" && <OverviewView timeframe={timeframe} />}
       {view === "workouts" && <WorkoutsView />}

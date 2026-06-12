@@ -25,11 +25,7 @@ type CatalogState = {
 
 const CatalogContext = createContext<CatalogState | null>(null);
 
-export function ExerciseCatalogProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export function ExerciseCatalogProvider({ children }: { children: React.ReactNode }) {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,17 +54,13 @@ export function ExerciseCatalogProvider({
     [exercises, byID, loading, error, refresh],
   );
 
-  return (
-    <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>
-  );
+  return <CatalogContext.Provider value={value}>{children}</CatalogContext.Provider>;
 }
 
 export function useExerciseCatalog(): CatalogState {
   const ctx = useContext(CatalogContext);
   if (!ctx) {
-    throw new Error(
-      "useExerciseCatalog called outside <ExerciseCatalogProvider>",
-    );
+    throw new Error("useExerciseCatalog called outside <ExerciseCatalogProvider>");
   }
   return ctx;
 }

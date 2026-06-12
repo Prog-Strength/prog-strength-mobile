@@ -9,13 +9,7 @@
  * auth gate calls `refresh()` once a token is confirmed. Mirrors
  * prog-strength-web/lib/profile-context.tsx — keep the two in sync.
  */
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
 import { useRouter } from "expo-router";
 import {
   deleteAvatar,
@@ -80,9 +74,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   // Shared write path: run the call, store the returned profile,
   // rethrow so the caller can surface the error inline.
   const mutate = useCallback(
-    async (
-      op: (token: string) => Promise<ResolvedProfile>,
-    ): Promise<ResolvedProfile> => {
+    async (op: (token: string) => Promise<ResolvedProfile>): Promise<ResolvedProfile> => {
       const token = await getToken();
       if (!token) {
         router.replace("/login");
@@ -109,10 +101,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
     (image: PickedImage) => mutate((token) => uploadAvatar(token, image)),
     [mutate],
   );
-  const removeAvatar = useCallback(
-    () => mutate((token) => deleteAvatar(token)),
-    [mutate],
-  );
+  const removeAvatar = useCallback(() => mutate((token) => deleteAvatar(token)), [mutate]);
 
   return (
     <ProfileContext.Provider

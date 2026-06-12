@@ -4,14 +4,7 @@
 // patterns from workouts-view.tsx (useFocusEffect, RefreshControl,
 // danger-box error, ListEmptyComponent).
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  RefreshControl,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
@@ -71,8 +64,7 @@ export function RunningView({ timeframe }: { timeframe: Timeframe }) {
         // API returns desc by start_time; sort defensively so the list
         // is always newest-first regardless of API changes.
         const sorted = [...page.activities].sort(
-          (a, b) =>
-            new Date(b.start_time).getTime() - new Date(a.start_time).getTime(),
+          (a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime(),
         );
         setRuns(sorted);
       } catch (err) {
@@ -182,11 +174,7 @@ export function RunningView({ timeframe }: { timeframe: Timeframe }) {
         )
       }
       renderItem={({ item }) => (
-        <RunRow
-          run={item}
-          unit={unit}
-          onPress={() => router.push(`/activities/run/${item.id}`)}
-        />
+        <RunRow run={item} unit={unit} onPress={() => router.push(`/activities/run/${item.id}`)} />
       )}
     />
   );
@@ -229,9 +217,7 @@ function MetricsBanner({
         ) : (
           <>
             <Ionicons name="cloud-upload-outline" size={18} color="#fafafa" />
-            <Text className="text-sm font-medium text-foreground">
-              Import .tcx
-            </Text>
+            <Text className="text-sm font-medium text-foreground">Import .tcx</Text>
           </>
         )}
       </Pressable>
@@ -246,9 +232,7 @@ function MetricsBanner({
               hitSlop={6}
               className="mt-1 self-start active:opacity-70"
             >
-              <Text className="text-sm font-medium text-danger underline">
-                View run →
-              </Text>
+              <Text className="text-sm font-medium text-danger underline">View run →</Text>
             </Pressable>
           )}
         </View>
@@ -324,10 +308,7 @@ function MetricTile({
       style={{ flexBasis: "47%" }}
       className="rounded-lg border border-border bg-surface px-3 py-3"
     >
-      <Text
-        className="text-base font-semibold tabular-nums text-foreground"
-        numberOfLines={1}
-      >
+      <Text className="text-base font-semibold tabular-nums text-foreground" numberOfLines={1}>
         {value}
       </Text>
       <Text
@@ -356,10 +337,7 @@ function RunRow({
   unit: DistanceUnit;
   onPress: () => void;
 }) {
-  const name =
-    run.name && run.name.trim().length > 0
-      ? run.name
-      : runFallbackName(run.start_time);
+  const name = run.name && run.name.trim().length > 0 ? run.name : runFallbackName(run.start_time);
 
   const dateLabel = formatRunDate(run.start_time);
 
@@ -369,10 +347,7 @@ function RunRow({
       ? `${formatPace(run.avg_pace_sec_per_km, unit)} /${unit}`
       : null;
   const duration = formatRunDuration(run.duration_seconds);
-  const hr =
-    run.avg_heart_rate_bpm != null
-      ? `${Math.round(run.avg_heart_rate_bpm)} bpm`
-      : null;
+  const hr = run.avg_heart_rate_bpm != null ? `${Math.round(run.avg_heart_rate_bpm)} bpm` : null;
 
   // "5.2 mi · 8:42 /mi · 45:12" plus optional "· 152 bpm"
   const metricParts = [distance, pace, duration, hr].filter(Boolean);
@@ -389,10 +364,7 @@ function RunRow({
       <View className="flex-row items-center gap-2">
         <View className="flex-1 gap-0.5">
           <View className="flex-row items-baseline justify-between gap-2">
-            <Text
-              numberOfLines={1}
-              className="flex-1 text-base font-medium text-foreground"
-            >
+            <Text numberOfLines={1} className="flex-1 text-base font-medium text-foreground">
               {name}
             </Text>
             <Text className="text-xs text-muted">{dateLabel}</Text>

@@ -52,9 +52,7 @@ export function QuickAddSheet({
   ) => Promise<void>;
   onClose: () => void;
 }) {
-  const [meal, setMeal] = useState<MealType>(() =>
-    defaultMealForLocalHour(new Date()),
-  );
+  const [meal, setMeal] = useState<MealType>(() => defaultMealForLocalHour(new Date()));
   const [selection, setSelection] = useState<{
     kind: "pantry" | "recipe";
     id: string;
@@ -102,12 +100,8 @@ export function QuickAddSheet({
       >
         <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
           <View className="flex-1">
-            <Text className="text-base font-semibold text-foreground">
-              Quick add
-            </Text>
-            <Text className="text-xs text-muted">
-              Log a pantry item or recipe to today.
-            </Text>
+            <Text className="text-base font-semibold text-foreground">Quick add</Text>
+            <Text className="text-xs text-muted">Log a pantry item or recipe to today.</Text>
           </View>
           <Pressable
             onPress={onClose}
@@ -232,11 +226,7 @@ function Picker({
 }: {
   pantry: PantryItem[];
   recipes: Recipe[];
-  onPick: (s: {
-    kind: "pantry" | "recipe";
-    id: string;
-    label: string;
-  }) => void;
+  onPick: (s: { kind: "pantry" | "recipe"; id: string; label: string }) => void;
   onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
@@ -256,8 +246,7 @@ function Picker({
     for (const r of filteredRecipes) {
       rows.push({
         key: `recipe:${r.id}`,
-        pick: () =>
-          onPick({ kind: "recipe", id: r.id, label: `${r.name} (recipe)` }),
+        pick: () => onPick({ kind: "recipe", id: r.id, label: `${r.name} (recipe)` }),
         label: r.name,
         sub: `${formatNumber(r.macros.calories)} cal / batch`,
       });
@@ -291,9 +280,7 @@ function Picker({
       */}
       <ScrollView keyboardShouldPersistTaps="handled">
         {rows.length === 0 ? (
-          <Text className="px-3 py-3 text-center text-xs text-muted">
-            No matches.
-          </Text>
+          <Text className="px-3 py-3 text-center text-xs text-muted">No matches.</Text>
         ) : (
           rows.map((item) => {
             if ("header" in item) {

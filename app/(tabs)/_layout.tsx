@@ -49,73 +49,73 @@ export default function TabsLayout() {
   // authed session instead of on every tab focus.
   return (
     <ExerciseCatalogProvider>
-    <Tabs
-      screenOptions={{
-        // Dark-mode-only for v1 — matches the web app and our
-        // tailwind.config.js color tokens.
-        headerStyle: { backgroundColor: "#0a0a0b" },
-        headerTitleStyle: { color: "#fafafa" },
-        headerTintColor: "#fafafa",
-        headerShadowVisible: false,
-        headerRight: () => <AvatarButton />,
-        tabBarStyle: {
-          backgroundColor: "#0a0a0b",
-          borderTopColor: "#27272a",
-        },
-        tabBarActiveTintColor: "#3b82f6",
-        tabBarInactiveTintColor: "#a1a1aa",
-      }}
-    >
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: "Chat",
-          // Stack inside chat/ owns the header so it can mount the
-          // "New chat" / "History" buttons; double-headers look bad.
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="chatbubble-outline" color={color} size={size} />
-          ),
+      <Tabs
+        screenOptions={{
+          // Dark-mode-only for v1 — matches the web app and our
+          // tailwind.config.js color tokens.
+          headerStyle: { backgroundColor: "#0a0a0b" },
+          headerTitleStyle: { color: "#fafafa" },
+          headerTintColor: "#fafafa",
+          headerShadowVisible: false,
+          headerRight: () => <AvatarButton />,
+          tabBarStyle: {
+            backgroundColor: "#0a0a0b",
+            borderTopColor: "#27272a",
+          },
+          tabBarActiveTintColor: "#3b82f6",
+          tabBarInactiveTintColor: "#a1a1aa",
         }}
-      />
-      <Tabs.Screen
-        name="activities"
-        options={{
-          title: "Activities",
-          headerShown: false,
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="barbell-outline" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="calendar"
-        options={{
-          title: "Calendar",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="calendar-outline" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="nutrition"
-        options={{
-          title: "Nutrition",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="restaurant-outline" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="progress"
-        options={{
-          title: "Progress",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="trending-up-outline" color={color} size={size} />
-          ),
-        }}
-      />
-    </Tabs>
+      >
+        <Tabs.Screen
+          name="chat"
+          options={{
+            title: "Chat",
+            // Stack inside chat/ owns the header so it can mount the
+            // "New chat" / "History" buttons; double-headers look bad.
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="chatbubble-outline" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="activities"
+          options={{
+            title: "Activities",
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="barbell-outline" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="calendar"
+          options={{
+            title: "Calendar",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="calendar-outline" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="nutrition"
+          options={{
+            title: "Nutrition",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="restaurant-outline" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="progress"
+          options={{
+            title: "Progress",
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="trending-up-outline" color={color} size={size} />
+            ),
+          }}
+        />
+      </Tabs>
     </ExerciseCatalogProvider>
   );
 }

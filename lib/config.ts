@@ -15,6 +15,5 @@
  */
 export const config = {
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "https://api.progstrength.fitness",
-  agentUrl:
-    process.env.EXPO_PUBLIC_AGENT_URL ?? "https://agent.progstrength.fitness",
+  agentUrl: process.env.EXPO_PUBLIC_AGENT_URL ?? "https://agent.progstrength.fitness",
 };
