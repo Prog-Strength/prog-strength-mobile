@@ -4,14 +4,10 @@
     "slug": "prog-strength",
     "version": "0.2.0",
     "orientation": "portrait",
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "icon": "./assets/icon.png",
     "scheme": "progstrength",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "fitness.progstrength.app",
       "supportsTablet": true,
@@ -20,8 +16,7 @@
       }
     },
     "android": {
-      "package": "fitness.progstrength.app",
-      "edgeToEdgeEnabled": true
+      "package": "fitness.progstrength.app"
     },
     "plugins": [
       "expo-router",
@@ -50,7 +45,8 @@
           "photosPermission": "Prog Strength uses your photo library to set a profile picture and to log meals from photos.",
           "cameraPermission": "Prog Strength uses the camera to log meals from photos."
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
