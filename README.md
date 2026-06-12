@@ -10,8 +10,9 @@ API for reads and the Python agent for chat.
 | Route | Purpose |
 | --- | --- |
 | `/login` | Continue with Google → JWT in Keychain |
-| `/(tabs)/workouts` | List of your logged sessions, pull-to-refresh |
-| `/(tabs)/workouts/[id]` | One session's details (sets, reps, weights, PR badges) |
+| `/(tabs)/activities` | Activities hub — Overview / Workouts / Running segments |
+| `/(tabs)/activities/workout/[id]` | One session's details (sets, reps, weights, PR badges) |
+| `/(tabs)/activities/run/[id]` | Run detail — stats + pace/HR/elevation charts |
 | `/(tabs)/chat` | Streaming chat with the agent — log new workouts, ask about progress |
 
 Defered to a follow-up: Progress chart, Personal Records page,
@@ -75,12 +76,12 @@ from a temporary screen and skip OAuth altogether.
 ```
 app/                  Expo Router file-based routes (mirrors web's
   _layout.tsx         pages/ layout)
-  index.tsx           Auth-aware redirect → /login or /workouts
+  index.tsx           Auth-aware redirect → /login or /activities
   login.tsx
   (tabs)/             Route group: bottom-tab nav
     _layout.tsx
-    workouts/
-      _layout.tsx     Nested stack so detail pushes over list
+    activities/
+      _layout.tsx     Nested stack so details push over the hub
       index.tsx
       [id].tsx
     chat.tsx

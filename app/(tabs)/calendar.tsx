@@ -3,7 +3,7 @@
 // and information-light (a dot under each day that has a workout),
 // the agenda below carries the detail. Tapping a day moves the
 // selection + scrolls the agenda; tapping a workout in the agenda
-// pushes the existing /workouts/[id] detail screen.
+// pushes the existing /activities/workout/[id] detail screen.
 //
 // All date math is local-time (per the SOW's TZ decision). The API
 // query uses UTC bounds derived from the local-day boundaries of the
@@ -20,9 +20,22 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
-import { listWorkouts, type Exercise, type Workout } from "@/lib/api";
+import {
+  listWorkouts,
+  listRunningSessions,
+  type Exercise,
+  type Workout,
+  type RunningSession,
+} from "@/lib/api";
 import { WorkoutRow } from "@/components/workout-row";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
+import { useProfile } from "@/lib/profile-context";
+import {
+  formatDistance,
+  formatPace,
+  runFallbackName,
+  type DistanceUnit,
+} from "@/lib/units";
 
 // 7-column header. Monday-first because that's how the lifter
 // mentally chunks a training week (Monday = start of the program
@@ -30,9 +43,16 @@ import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 // the same grid.
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
+// Teal #2dd4bf is Tailwind's built-in teal-400; NativeWind exposes it
+// via bg-teal-400. The class is used for run dots and run agenda rows.
+const TEAL = "#2dd4bf";
+
 export default function CalendarScreen() {
   const router = useRouter();
   const { byID: exerciseByID } = useExerciseCatalog();
+  const { profile } = useProfile();
+  const distanceUnit: DistanceUnit = profile?.distance_unit ?? "mi";
+
   const [monthAnchor, setMonthAnchor] = useState<Date>(() =>
     startOfMonth(new Date()),
   );
@@ -40,6 +60,7 @@ export default function CalendarScreen() {
     startOfLocalDay(new Date()),
   );
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [runs, setRuns] = useState<RunningSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -68,14 +89,24 @@ export default function CalendarScreen() {
       setLoading(true);
       setError(null);
       try {
-        // limit=100 covers ~3 workouts/day for a 42-day window with
-        // plenty of headroom. Pagination not needed at single-user scale.
-        const page = await listWorkouts(token, {
-          since: since.toISOString(),
-          until: until.toISOString(),
-          limit: 100,
-        });
-        setWorkouts(page.items);
+        // Fetch workouts and running sessions in parallel for the same
+        // grid window. The workouts call caps at limit=100 (~3 sessions/
+        // day over a 42-day window, plenty of headroom); the runs call
+        // uses range mode, which is uncapped. Pagination not needed at
+        // single-user scale.
+        const [workoutPage, runsPage] = await Promise.all([
+          listWorkouts(token, {
+            since: since.toISOString(),
+            until: until.toISOString(),
+            limit: 100,
+          }),
+          listRunningSessions(token, {
+            since: since.toISOString(),
+            until: until.toISOString(),
+          }),
+        ]);
+        setWorkouts(workoutPage.items);
+        setRuns(runsPage.activities);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.toLowerCase().includes("401")) {
@@ -123,8 +154,28 @@ export default function CalendarScreen() {
     return m;
   }, [workouts]);
 
+  // Bucket runs by local YYYY-MM-DD, keyed on start_time.
+  const runsByDay = useMemo(() => {
+    const m = new Map<string, RunningSession[]>();
+    for (const r of runs) {
+      const key = localDateKey(new Date(r.start_time));
+      const arr = m.get(key);
+      if (arr) arr.push(r);
+      else m.set(key, [r]);
+    }
+    // Sort each day's runs most-recent-first.
+    for (const [, arr] of m) {
+      arr.sort(
+        (a, b) =>
+          new Date(b.start_time).getTime() - new Date(a.start_time).getTime(),
+      );
+    }
+    return m;
+  }, [runs]);
+
   const selectedDayWorkouts =
     workoutsByDay.get(localDateKey(selectedDay)) ?? [];
+  const selectedDayRuns = runsByDay.get(localDateKey(selectedDay)) ?? [];
 
   return (
     <View className="flex-1 bg-background">
@@ -146,6 +197,7 @@ export default function CalendarScreen() {
         monthAnchor={monthAnchor}
         selectedDay={selectedDay}
         workoutsByDay={workoutsByDay}
+        runsByDay={runsByDay}
         onSelect={setSelectedDay}
       />
 
@@ -160,9 +212,12 @@ export default function CalendarScreen() {
       <Agenda
         selectedDay={selectedDay}
         workouts={selectedDayWorkouts}
+        runs={selectedDayRuns}
         exerciseByID={exerciseByID}
         loading={loading}
-        onPressWorkout={(id) => router.push(`/workouts/${id}`)}
+        distanceUnit={distanceUnit}
+        onPressWorkout={(id) => router.push(`/activities/workout/${id}`)}
+        onPressRun={(id) => router.push(`/activities/run/${id}`)}
       />
     </View>
   );
@@ -253,12 +308,14 @@ function MonthGrid({
   monthAnchor,
   selectedDay,
   workoutsByDay,
+  runsByDay,
   onSelect,
 }: {
   grid: Date[];
   monthAnchor: Date;
   selectedDay: Date;
   workoutsByDay: Map<string, Workout[]>;
+  runsByDay: Map<string, RunningSession[]>;
   onSelect: (d: Date) => void;
 }) {
   const today = startOfLocalDay(new Date());
@@ -281,8 +338,9 @@ function MonthGrid({
             const inMonth = d.getMonth() === monthAnchor.getMonth();
             const isToday = sameLocalDay(d, today);
             const isSelected = sameLocalDay(d, selectedDay);
-            const hasWorkouts =
-              (workoutsByDay.get(localDateKey(d))?.length ?? 0) > 0;
+            const key = localDateKey(d);
+            const hasWorkouts = (workoutsByDay.get(key)?.length ?? 0) > 0;
+            const hasRuns = (runsByDay.get(key)?.length ?? 0) > 0;
             return (
               <Pressable
                 key={d.toISOString()}
@@ -317,12 +375,22 @@ function MonthGrid({
                 {d.getDate()}
               </Text>
             </View>
-            {hasWorkouts && (
-              <View
-                className={`mt-0.5 h-1 w-1 rounded-full ${
-                  isSelected ? "bg-accent-fg" : "bg-accent"
-                }`}
-              />
+            {/* Dot row: workout dot (accent/white) + run dot (teal), side by side */}
+            {(hasWorkouts || hasRuns) && (
+              <View className="mt-0.5 flex-row items-center gap-0.5">
+                {hasWorkouts && (
+                  <View
+                    className={`h-1 w-1 rounded-full ${
+                      isSelected ? "bg-accent-fg" : "bg-accent"
+                    }`}
+                  />
+                )}
+                {hasRuns && (
+                  <View
+                    className="h-1 w-1 rounded-full bg-teal-400"
+                  />
+                )}
+              </View>
             )}
               </Pressable>
             );
@@ -338,16 +406,24 @@ function MonthGrid({
 function Agenda({
   selectedDay,
   workouts,
+  runs,
   exerciseByID,
   loading,
+  distanceUnit,
   onPressWorkout,
+  onPressRun,
 }: {
   selectedDay: Date;
   workouts: Workout[];
+  runs: RunningSession[];
   exerciseByID: Map<string, Exercise>;
   loading: boolean;
+  distanceUnit: DistanceUnit;
   onPressWorkout: (id: string) => void;
+  onPressRun: (id: string) => void;
 }) {
+  const hasItems = workouts.length > 0 || runs.length > 0;
+
   return (
     <ScrollView
       className="flex-1"
@@ -362,16 +438,16 @@ function Agenda({
         })}
       </Text>
 
-      {loading && workouts.length === 0 && (
+      {loading && !hasItems && (
         <View className="items-center py-6">
           <ActivityIndicator color="#fafafa" />
         </View>
       )}
 
-      {!loading && workouts.length === 0 && (
+      {!loading && !hasItems && (
         <View className="rounded-lg border border-border bg-surface px-4 py-6">
           <Text className="text-center text-sm font-medium text-foreground">
-            No workouts on this day
+            No activities on this day
           </Text>
           <Text className="mt-1 text-center text-xs text-muted">
             Pick another day from the grid, or log a session from the Chat tab.
@@ -387,7 +463,67 @@ function Agenda({
           onPress={() => onPressWorkout(w.id)}
         />
       ))}
+
+      {runs.map((r) => (
+        <RunRow
+          key={r.id}
+          run={r}
+          distanceUnit={distanceUnit}
+          onPress={() => onPressRun(r.id)}
+        />
+      ))}
     </ScrollView>
+  );
+}
+
+// --- Run agenda row -----------------------------------------------
+
+function RunRow({
+  run,
+  distanceUnit,
+  onPress,
+}: {
+  run: RunningSession;
+  distanceUnit: DistanceUnit;
+  onPress: () => void;
+}) {
+  const name =
+    run.name && run.name.trim().length > 0
+      ? run.name.trim()
+      : runFallbackName(run.start_time);
+  const distStr = `${formatDistance(run.distance_meters, distanceUnit)} ${distanceUnit}`;
+  const paceStr = formatPace(run.avg_pace_sec_per_km, distanceUnit);
+  const hasPace = paceStr !== "—";
+
+  const startDate = new Date(run.start_time);
+  const timeStr = startDate.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  const subtitle = hasPace
+    ? `${timeStr} · ${distStr} · ${paceStr} /${distanceUnit}`
+    : `${timeStr} · ${distStr}`;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      className="flex-row overflow-hidden rounded-lg border border-border bg-surface active:opacity-80"
+      style={{ minHeight: 44 }}
+    >
+      {/* Teal left accent bar */}
+      <View style={{ width: 4, backgroundColor: TEAL }} />
+      <View className="flex-1 justify-center px-3 py-2">
+        <Text className="text-sm font-semibold text-foreground" numberOfLines={1}>
+          {name}
+        </Text>
+        <Text className="mt-0.5 text-xs text-muted" numberOfLines={1}>
+          {subtitle}
+        </Text>
+      </View>
+    </Pressable>
   );
 }
 

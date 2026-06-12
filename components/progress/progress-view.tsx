@@ -365,7 +365,7 @@ function SelectedPointCard({
   const router = useRouter();
   return (
     <Pressable
-      onPress={() => router.push(`/workouts/${point.workout_id}`)}
+      onPress={() => router.push(`/activities/workout/${point.workout_id}`)}
       onLongPress={onDismiss}
       accessibilityRole="button"
       className="gap-1 rounded-lg border border-border bg-surface p-3 active:opacity-80"
@@ -623,7 +623,7 @@ function EstimatesRows({
         return (
           <Pressable
             key={`${p.workout_id}:${p.exercise_id}`}
-            onPress={() => router.push(`/workouts/${p.workout_id}`)}
+            onPress={() => router.push(`/activities/workout/${p.workout_id}`)}
             accessibilityRole="button"
             className="flex-row items-center gap-2 rounded-md border border-border bg-background p-2 active:opacity-80"
           >
@@ -742,7 +742,7 @@ function SetsRows({
         return (
           <Pressable
             key={`${r.workout_id}:${r.exercise_id}:${r.reps}:${r.weight}:${idx}`}
-            onPress={() => router.push(`/workouts/${r.workout_id}`)}
+            onPress={() => router.push(`/activities/workout/${r.workout_id}`)}
             accessibilityRole="button"
             className="flex-row items-center gap-2 rounded-md border border-border bg-background p-2 active:opacity-80"
           >

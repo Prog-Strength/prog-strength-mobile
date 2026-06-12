@@ -1,10 +1,10 @@
-// Stack inside the Workouts tab. Lets us push the detail screen on
+// Stack inside the Activities tab. Lets us push the detail screens on
 // top of the list while keeping the tab bar visible — exactly the
 // behavior iOS users expect from any list/detail flow.
 import { Stack } from "expo-router";
 import { AvatarButton } from "@/components/avatar-button";
 
-export default function WorkoutsLayout() {
+export default function ActivitiesLayout() {
   return (
     <Stack
       screenOptions={{
@@ -17,9 +17,10 @@ export default function WorkoutsLayout() {
     >
       <Stack.Screen
         name="index"
-        options={{ title: "Workouts", headerRight: () => <AvatarButton /> }}
+        options={{ title: "Activities", headerRight: () => <AvatarButton /> }}
       />
-      <Stack.Screen name="[id]" options={{ title: "Workout" }} />
+      <Stack.Screen name="workout/[id]" options={{ title: "Workout" }} />
+      <Stack.Screen name="run/[id]" options={{ title: "Run" }} />
     </Stack>
   );
 }

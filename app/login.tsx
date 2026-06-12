@@ -60,7 +60,7 @@ export default function LoginScreen() {
   // Keychain — covers app-restart and a successful first login.
   useEffect(() => {
     getToken().then((t) => {
-      if (t) router.replace("/workouts");
+      if (t) router.replace("/activities");
     });
   }, [router]);
 
@@ -105,7 +105,7 @@ export default function LoginScreen() {
         token,
         Number.isFinite(expiresIn) ? expiresIn : undefined,
       );
-      router.replace("/workouts");
+      router.replace("/activities");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -140,7 +140,7 @@ export default function LoginScreen() {
         token,
         Number.isFinite(expiresIn) ? expiresIn : undefined,
       );
-      router.replace("/workouts");
+      router.replace("/activities");
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

@@ -23,6 +23,7 @@ import Svg, {
 } from "react-native-svg";
 import type { BodyweightEntry } from "@/lib/api";
 import { convertWeight } from "@/lib/units";
+import { niceXTicks, niceYTicks } from "@/components/charts/ticks";
 
 const DEFAULT_HEIGHT = 200;
 const PADDING_LEFT = 36;
@@ -291,29 +292,6 @@ export function BodyweightChart({
 }
 
 // --- helpers ------------------------------------------------------
-
-function niceYTicks(min: number, max: number, count: number): number[] {
-  if (max <= min) return [min];
-  const rawStep = (max - min) / (count - 1);
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const norm = rawStep / mag;
-  const snap = norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10;
-  const step = snap * mag;
-  const start = Math.ceil(min / step) * step;
-  const ticks: number[] = [];
-  for (let v = start; v <= max + 1e-9; v += step) {
-    ticks.push(Math.round(v * 100) / 100);
-  }
-  return ticks;
-}
-
-function niceXTicks(min: number, max: number, count: number): number[] {
-  if (max <= min || count <= 1) return [min];
-  const step = (max - min) / (count - 1);
-  const ticks: number[] = [];
-  for (let i = 0; i < count; i++) ticks.push(min + step * i);
-  return ticks;
-}
 
 function formatTickValue(v: number): string {
   return Number.isInteger(v) ? String(v) : v.toFixed(1);

@@ -1,6 +1,7 @@
-// Workouts list. Mirrors prog-strength-web's /workouts page in spirit
-// but groups sessions into weekly sections — each header shows the
-// Mon-Sun date range, the workout count, and the total training time.
+// Workouts list, extracted from app/(tabs)/activities/index.tsx in Task 4.
+// Mirrors prog-strength-web's /workouts page in spirit but groups sessions
+// into weekly sections — each header shows the Mon-Sun date range, the
+// workout count, and the total training time.
 // Weeks start on Monday to match the calendar tab and how lifters
 // mentally chunk a training week.
 import { useCallback, useMemo, useState } from "react";
@@ -39,7 +40,7 @@ type WeekSection = {
   data: Workout[];
 };
 
-export default function WorkoutsListScreen() {
+export function WorkoutsView() {
   const router = useRouter();
   const { byID: exerciseByID } = useExerciseCatalog();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -148,7 +149,7 @@ export default function WorkoutsListScreen() {
         <WorkoutRow
           workout={item}
           exerciseByID={exerciseByID}
-          onPress={() => router.push(`/workouts/${item.id}`)}
+          onPress={() => router.push(`/activities/workout/${item.id}`)}
         />
       )}
     />

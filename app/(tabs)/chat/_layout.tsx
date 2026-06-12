@@ -1,4 +1,4 @@
-// Stack inside the Chat tab. Mirrors workouts/_layout.tsx — the Stack
+// Stack inside the Chat tab. Mirrors activities/_layout.tsx — the Stack
 // header owns the title + buttons so the chat surface gains "New chat"
 // and "History" affordances without sacrificing the bottom tab bar.
 // The tab itself is set headerShown:false (see (tabs)/_layout.tsx) so

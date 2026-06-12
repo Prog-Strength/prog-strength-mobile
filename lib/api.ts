@@ -1326,3 +1326,213 @@ export async function getMyUsage(token: string, tz: string): Promise<UsageData> 
     resets_at: "",
   });
 }
+
+// --- Running activities -------------------------------------------
+
+export type ActivityType = "running" | "walking" | "cycling" | "other";
+export type IngestSource = "manual_tcx" | "garmin_api";
+
+export type RunningSession = {
+  id: string;
+  activity_type: ActivityType;
+  ingest_source: IngestSource;
+  source_activity_id: string;
+  name: string | null;
+  start_time: string; // RFC3339
+  distance_meters: number;
+  duration_seconds: number;
+  avg_pace_sec_per_km: number | null;
+  best_pace_sec_per_km: number | null;
+  avg_heart_rate_bpm: number | null;
+  max_heart_rate_bpm: number | null;
+  total_calories: number | null;
+  elevation_gain_meters: number | null;
+  created_at: string;
+  // Present on detail GET only.
+  trackpoints?: RunningTrackpoint[];
+};
+
+export type RunningTrackpoint = {
+  sequence: number;
+  elapsed_seconds: number;
+  distance_meters: number;
+  heart_rate_bpm: number | null;
+  pace_sec_per_km: number | null;
+  elevation_meters: number | null;
+};
+
+export type RunningSessionsPage = {
+  activities: RunningSession[];
+  next_before: string | null;
+};
+
+export type RunningMetrics = {
+  current_week: {
+    distance_meters: number;
+    run_count: number;
+    delta_pct_vs_prior_week: number | null;
+  };
+  current_month: { distance_meters: number; run_count: number };
+  recent_avg_pace_sec_per_km: number | null;
+  all_time: { distance_meters: number; run_count: number };
+};
+
+/**
+ * GET /activities. Range mode (since/until) and cursor mode
+ * (limit/before) are mutually exclusive — the API rejects mixing them.
+ */
+export async function listRunningSessions(
+  token: string,
+  opts: { limit?: number; before?: string; since?: string; until?: string } = {},
+): Promise<RunningSessionsPage> {
+  const params = new URLSearchParams();
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.before) params.set("before", opts.before);
+  if (opts.since) params.set("since", opts.since);
+  if (opts.until) params.set("until", opts.until);
+  const qs = params.toString();
+  const resp = await fetch(`${config.apiUrl}/activities${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<RunningSessionsPage>(resp, { activities: [], next_before: null });
+}
+
+/** GET /activities/{id} — includes trackpoints. */
+export async function getRunningSession(
+  token: string,
+  id: string,
+): Promise<RunningSession> {
+  const resp = await fetch(`${config.apiUrl}/activities/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const got = await unwrap<RunningSession | null>(resp, null);
+  if (!got) throw new Error("activity not found");
+  return got;
+}
+
+/** GET /activities/running-metrics — fixed buckets, timeframe-independent. */
+export async function getRunningMetrics(
+  token: string,
+  timezone: string,
+): Promise<RunningMetrics> {
+  const params = new URLSearchParams({ timezone });
+  const resp = await fetch(
+    `${config.apiUrl}/activities/running-metrics?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return unwrap<RunningMetrics>(resp, {
+    current_week: { distance_meters: 0, run_count: 0, delta_pct_vs_prior_week: null },
+    current_month: { distance_meters: 0, run_count: 0 },
+    recent_avg_pace_sec_per_km: null,
+    all_time: { distance_meters: 0, run_count: 0 },
+  });
+}
+
+/** PATCH /activities/{id} — rename. */
+export async function renameRunningSession(
+  token: string,
+  id: string,
+  name: string,
+): Promise<RunningSession> {
+  const resp = await fetch(`${config.apiUrl}/activities/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ name }),
+  });
+  const got = await unwrap<RunningSession | null>(resp, null);
+  if (!got) throw new Error("API did not return the updated activity");
+  return got;
+}
+
+/** DELETE /activities/{id}. */
+export async function deleteRunningSession(
+  token: string,
+  id: string,
+): Promise<void> {
+  const resp = await fetch(`${config.apiUrl}/activities/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    let detail: string;
+    try {
+      detail = (await resp.json())?.error ?? `HTTP ${resp.status}`;
+    } catch {
+      detail = `HTTP ${resp.status}`;
+    }
+    throw new Error(detail);
+  }
+}
+
+/**
+ * Thrown by importRunningTcx on a 409 — the activity was already
+ * imported. Carries the existing activity's id so the UI can link to
+ * it ("already in your log → View run").
+ */
+export class DuplicateRunError extends Error {
+  existingActivityId: string;
+  constructor(message: string, existingActivityId: string) {
+    super(message);
+    this.name = "DuplicateRunError";
+    this.existingActivityId = existingActivityId;
+  }
+}
+
+/** A local .tcx file picked for import (RN FormData part). */
+export type PickedFile = {
+  uri: string;
+  name: string;
+  mimeType: string;
+};
+
+/**
+ * POST /activities/tcx as multipart/form-data under field `file`.
+ * Server caps at 10 MB. 409 → DuplicateRunError. No Content-Type
+ * header (fetch sets the multipart boundary; same rule as uploadAvatar).
+ */
+export async function importRunningTcx(
+  token: string,
+  file: PickedFile,
+): Promise<RunningSession> {
+  const form = new FormData();
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType,
+  } as unknown as Blob);
+  const resp = await fetch(`${config.apiUrl}/activities/tcx`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (resp.status === 409) {
+    let body: { error?: string; existing_activity_id?: string } = {};
+    try {
+      body = await resp.json();
+    } catch {
+      // fall through to defaults
+    }
+    throw new DuplicateRunError(
+      body.error || "This activity is already in your log.",
+      body.existing_activity_id ?? "",
+    );
+  }
+  if (!resp.ok) {
+    if (resp.status === 413) {
+      throw new Error("File is too large (max 10 MB).");
+    }
+    let detail: string;
+    try {
+      detail = (await resp.json())?.error ?? `HTTP ${resp.status}`;
+    } catch {
+      detail = `HTTP ${resp.status}`;
+    }
+    throw new Error(detail);
+  }
+  const got = await unwrap<RunningSession | null>(resp, null);
+  if (!got) throw new Error("API did not return the imported activity");
+  return got;
+}

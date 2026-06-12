@@ -5,7 +5,7 @@
 // route group.
 //
 // Tab layout per the initial-mobile-app-implementation SOW:
-//   Chat · Workouts · Calendar · Nutrition · Progress
+//   Chat · Activities · Calendar · Nutrition · Progress
 //
 // Five is the practical max for iOS bottom navigation. Personal
 // Records nests inside Progress and Pantry + Bodyweight nest inside
@@ -79,9 +79,9 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="workouts"
+        name="activities"
         options={{
-          title: "Workouts",
+          title: "Activities",
           headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="barbell-outline" color={color} size={size} />
