@@ -14,9 +14,12 @@ import {
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
 import { clearToken, getToken } from "@/lib/auth";
 import {
+  DuplicateRunError,
   getRunningMetrics,
+  importRunningTcx,
   listRunningSessions,
   type RunningMetrics,
   type RunningSession,
@@ -43,6 +46,9 @@ export function RunningView({ timeframe }: { timeframe: Timeframe }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [duplicateOf, setDuplicateOf] = useState<string | null>(null);
 
   const load = useCallback(
     async (opts: { refreshing?: boolean } = {}) => {
@@ -86,6 +92,42 @@ export function RunningView({ timeframe }: { timeframe: Timeframe }) {
     [router, timeframe],
   );
 
+  const importTcx = useCallback(async () => {
+    setImportError(null);
+    setDuplicateOf(null);
+    const res = await DocumentPicker.getDocumentAsync({
+      type: ["application/octet-stream", "application/xml", "text/xml", "*/*"],
+      copyToCacheDirectory: true,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const asset = res.assets[0];
+    if (asset.size != null && asset.size > 10 * 1024 * 1024) {
+      setImportError("File is larger than the 10 MB limit.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("not signed in");
+      const session = await importRunningTcx(token, {
+        uri: asset.uri,
+        name: asset.name ?? "activity.tcx",
+        mimeType: asset.mimeType ?? "application/xml",
+      });
+      router.push(`/activities/run/${session.id}`);
+      void load({ refreshing: false });
+    } catch (err) {
+      if (err instanceof DuplicateRunError) {
+        setDuplicateOf(err.existingActivityId);
+        setImportError("This run is already in your log.");
+      } else {
+        setImportError(err instanceof Error ? err.message : String(err));
+      }
+    } finally {
+      setImporting(false);
+    }
+  }, [router, load]);
+
   // useFocusEffect covers initial load + refetch-on-tab-return.
   useFocusEffect(
     useCallback(() => {
@@ -116,7 +158,16 @@ export function RunningView({ timeframe }: { timeframe: Timeframe }) {
       }
       ItemSeparatorComponent={() => <View className="h-2" />}
       ListHeaderComponent={
-        <MetricsBanner metrics={metrics} unit={unit} error={error} />
+        <MetricsBanner
+          metrics={metrics}
+          unit={unit}
+          error={error}
+          importing={importing}
+          importError={importError}
+          duplicateOf={duplicateOf}
+          onImport={importTcx}
+          onViewDuplicate={(id) => router.push(`/activities/run/${id}`)}
+        />
       }
       ListEmptyComponent={
         error ? null : (
@@ -147,13 +198,61 @@ function MetricsBanner({
   metrics,
   unit,
   error,
+  importing,
+  importError,
+  duplicateOf,
+  onImport,
+  onViewDuplicate,
 }: {
   metrics: RunningMetrics | null;
   unit: DistanceUnit;
   error: string | null;
+  importing: boolean;
+  importError: string | null;
+  duplicateOf: string | null;
+  onImport: () => void;
+  onViewDuplicate: (id: string) => void;
 }) {
   return (
     <View className="gap-3 py-3">
+      {/* Import .tcx button */}
+      <Pressable
+        onPress={onImport}
+        disabled={importing}
+        accessibilityRole="button"
+        accessibilityLabel="Import TCX file"
+        style={{ minHeight: 44 }}
+        className="flex-row items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-3 active:opacity-80"
+      >
+        {importing ? (
+          <ActivityIndicator size="small" color="#fafafa" />
+        ) : (
+          <>
+            <Ionicons name="cloud-upload-outline" size={18} color="#fafafa" />
+            <Text className="text-sm font-medium text-foreground">
+              Import .tcx
+            </Text>
+          </>
+        )}
+      </Pressable>
+      {/* Import error / duplicate box */}
+      {importError != null && (
+        <View className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2">
+          <Text className="text-sm text-danger">{importError}</Text>
+          {duplicateOf != null && duplicateOf.length > 0 && (
+            <Pressable
+              onPress={() => onViewDuplicate(duplicateOf)}
+              accessibilityRole="link"
+              hitSlop={6}
+              className="mt-1 self-start active:opacity-70"
+            >
+              <Text className="text-sm font-medium text-danger underline">
+                View run →
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
       {error && (
         <View className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2">
           <Text className="text-sm text-danger">{error}</Text>
