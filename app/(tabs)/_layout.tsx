@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { getToken } from "@/lib/auth";
+import { AvatarButton } from "@/components/avatar-button";
 import { ExerciseCatalogProvider } from "@/components/exercise-catalog-context";
 import { useProfile } from "@/lib/profile-context";
 import { useUsage } from "@/lib/usage-context";
@@ -57,6 +58,7 @@ export default function TabsLayout() {
         headerTitleStyle: { color: "#fafafa" },
         headerTintColor: "#fafafa",
         headerShadowVisible: false,
+        headerRight: () => <AvatarButton />,
         tabBarStyle: {
           backgroundColor: "#0a0a0b",
           borderTopColor: "#27272a",
