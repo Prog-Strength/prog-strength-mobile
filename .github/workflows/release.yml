@@ -1,19 +1,27 @@
 name: Mobile Release
 
-# Two paths, one workflow:
+# Fully automatic releases — one decision the pipeline makes itself:
 #
-#   - Every push to main runs `eas update` against the production
-#     channel — JS-only OTA delivery. App on the phone fetches the
-#     new bundle the next time it opens. No App Store review, no
-#     native rebuild, no version bump.
+#   Every push to main runs continuous-deploy-fingerprint, which
+#   computes the native fingerprint (a hash of everything that affects
+#   the native binary: native deps, config plugins, SDK version) and:
 #
-#   - workflow_dispatch with build=true runs `eas build` for the
-#     selected profile and (when production) auto-submits to App
-#     Store Connect. Use this when native files change — app.json,
-#     bundle id, expo SDK bump, new native dependency, app icon.
+#     - fingerprint already has an EAS build  → JS-only change →
+#       `eas update` to the production branch; phones pick it up on
+#       next app launch (~30s).
+#     - fingerprint has NO build              → native change →
+#       `eas build --auto-submit` → new TestFlight build, no human
+#       in the loop. The build embeds the current JS bundle.
 #
-# Mirrors the api / mcp / agent release-on-push pattern, adapted for
-# the EAS toolchain.
+#   runtimeVersion.policy is "fingerprint" (app.json), so an OTA
+#   update can never land on a binary whose native state doesn't
+#   match — the version-bump foot-gun from the appVersion era is
+#   structurally gone. No more manual version bumps for native
+#   changes; `autoIncrement` still handles the build number.
+#
+#   workflow_dispatch with build=true remains as an escape hatch to
+#   FORCE a native build when the fingerprint hasn't changed — needed
+#   for TestFlight's 90-day build expiry, and nothing else.
 
 on:
   push:
@@ -21,28 +29,26 @@ on:
   workflow_dispatch:
     inputs:
       build:
-        description: "Cut a new native build instead of an OTA update"
+        description: "Force a native build even though the fingerprint hasn't changed (e.g. TestFlight 90-day expiry refresh)"
         type: boolean
         default: false
       profile:
-        description: "EAS build profile (preview = TestFlight Internal; production = App Store track)"
+        description: "EAS build profile for the forced build"
         type: choice
         options:
           - preview
           - production
-        default: preview
+        default: production
 
 concurrency:
   group: mobile-release
   cancel-in-progress: false
 
 jobs:
-  update:
-    # OTA path: fires on every push to main, and on a manual dispatch
-    # when the user did NOT ask for a full build. Skipped if either:
-    # native files are likely changed (`build=true`) OR there's no
-    # push event at all.
-    if: ${{ github.event_name == 'push' || github.event.inputs.build != 'true' }}
+  deploy:
+    # The automatic path: every push to main. Decides OTA vs native
+    # build by fingerprint; auto-submits new builds to TestFlight.
+    if: ${{ github.event_name == 'push' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,22 +65,18 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
 
-      - name: Publish OTA update
-        # `--auto` picks the channel from the current git branch's
-        # mapping in EAS dashboard (we ship "main" → production).
-        # Commit subject becomes the EAS update message so the EAS
-        # dashboard reads like a deploy log.
-        run: |
-          eas update \
-            --branch production \
-            --message "$(git log -1 --pretty=%s)" \
-            --non-interactive
+      - name: Continuous deploy (fingerprint)
+        uses: expo/expo-github-action/continuous-deploy-fingerprint@v8
+        with:
+          profile: production
+          branch: production
+          platform: ios
+          auto-submit-builds: true
 
-  build:
-    # Native path: only when the user manually fires workflow_dispatch
-    # with build=true. Runs eas build for the chosen profile and, for
-    # production, auto-submits to App Store Connect (TestFlight
-    # Internal Testing slot fills within ~30 min, no review needed).
+  forced-build:
+    # Escape hatch: manual dispatch with build=true. Identical to the
+    # old manual native path; exists only for fingerprint-unchanged
+    # rebuilds (TestFlight 90-day expiry).
     if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.build == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -94,9 +96,6 @@ jobs:
 
       - name: EAS build
         run: |
-          # --non-interactive is required in CI; --no-wait would let
-          # the job finish before the build does. We wait so a green
-          # workflow == a finished build, mirroring api/release.yml.
           eas build \
             --platform ios \
             --profile ${{ github.event.inputs.profile }} \
@@ -104,9 +103,6 @@ jobs:
 
       - name: Submit to App Store Connect
         if: ${{ github.event.inputs.profile == 'production' }}
-        # Submit only for the production profile. Preview profile
-        # builds get an install link from EAS (ad-hoc distribution)
-        # and skip App Store Connect entirely.
         run: |
           eas submit \
             --platform ios \
