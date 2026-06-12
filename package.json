@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "eas-build-on-error": "node scripts/fingerprint-debug.js"
   },
   "dependencies": {
     "expo": "~55.0.26",
