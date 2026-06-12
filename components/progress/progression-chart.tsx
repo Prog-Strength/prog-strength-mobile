@@ -19,6 +19,7 @@ import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, G, Line, Rect, Text as SvgText } from "react-native-svg";
 import type { ExerciseBaseline, MuscleGroupProgressionPoint, Trendline } from "@/lib/api";
+import { niceXTicks, niceYTicksPercent } from "@/components/charts/ticks";
 
 const DEFAULT_HEIGHT = 240;
 const PADDING_LEFT = 36;
@@ -123,7 +124,7 @@ export function ProgressionChart({
 
   // Y-axis ticks — 4 evenly-spaced values across the domain. Rounded
   // to nice percentages where possible.
-  const yTicks = niceYTicks(yMin, yMax, 4);
+  const yTicks = niceYTicksPercent(yMin, yMax, 4);
   // X-axis ticks — 3 evenly-spaced timestamps.
   const xTicks = niceXTicks(xMin, xMax, 3);
 
@@ -255,31 +256,6 @@ export function ProgressionChart({
 }
 
 // --- helpers ------------------------------------------------------
-
-function niceYTicks(min: number, max: number, count: number): number[] {
-  if (max <= min) return [min];
-  const step = (max - min) / (count - 1);
-  // Snap step to a nearby 5%/10%/25% increment so the labels read clean.
-  const snap = [0.05, 0.1, 0.15, 0.2, 0.25, 0.5].reduce(
-    (best, s) => (Math.abs(s - step) < Math.abs(best - step) ? s : best),
-    0.25,
-  );
-  const start = Math.floor(min / snap) * snap;
-  const ticks: number[] = [];
-  for (let v = start; v <= max + 1e-9; v += snap) {
-    if (v >= min - 1e-9) ticks.push(Math.round(v * 100) / 100);
-  }
-  return ticks;
-}
-
-function niceXTicks(min: number, max: number, count: number): number[] {
-  if (max <= min) return [min];
-  if (count <= 1) return [min];
-  const step = (max - min) / (count - 1);
-  const ticks: number[] = [];
-  for (let i = 0; i < count; i++) ticks.push(min + step * i);
-  return ticks;
-}
 
 function formatTickDate(t: number): string {
   return new Date(t).toLocaleDateString(undefined, {
