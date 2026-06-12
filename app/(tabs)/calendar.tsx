@@ -487,7 +487,10 @@ function RunRow({
   distanceUnit: DistanceUnit;
   onPress: () => void;
 }) {
-  const name = run.name ?? runFallbackName(run.start_time);
+  const name =
+    run.name && run.name.trim().length > 0
+      ? run.name.trim()
+      : runFallbackName(run.start_time);
   const distStr = `${formatDistance(run.distance_meters, distanceUnit)} ${distanceUnit}`;
   const paceStr = formatPace(run.avg_pace_sec_per_km, distanceUnit);
   const hasPace = paceStr !== "—";
