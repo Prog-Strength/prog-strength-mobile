@@ -181,6 +181,9 @@ export default function CalendarScreen() {
         selectedDay={selectedDay}
         workoutsByDay={workoutsByDay}
         runsByDay={runsByDay}
+        workouts={workouts}
+        runs={runs}
+        distanceUnit={distanceUnit}
         onSelect={setSelectedDay}
       />
 
@@ -277,12 +280,70 @@ function DayLabelsRow() {
 
 // --- Grid ---------------------------------------------------------
 
+/**
+ * Port of web's weekly-overview.tsx formatTotalDuration.
+ * Edge cases: <= 0 → "0h", < 60 → "Xm", exact hour → "Xh", else "Xh Ym".
+ */
+function formatTotalDuration(minutes: number): string {
+  if (minutes <= 0) return "0h";
+  if (minutes < 60) return `${minutes}m`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/** Per-week rollup over a 7-day grid slice. Mirrors web's WeeklyStat shape. */
+type WeeklyStat = {
+  activities: number;
+  liftMinutes: number;
+  runMeters: number;
+  runMinutes: number;
+};
+
+/**
+ * Compute a WeeklyStat for a single 7-day grid row.
+ * - activities: workouts + runs whose localDateKey falls in the row.
+ * - liftMinutes: only workouts with a valid ended_at, positive duration,
+ *   Math.round(ms / 60000) — mirrors web's exact formula.
+ * - runMeters: sum of run.distance_meters for runs in the row.
+ * - runMinutes: Math.round(run.duration_seconds / 60).
+ */
+function computeWeeklyStat(row: Date[], workouts: Workout[], runs: RunningSession[]): WeeklyStat {
+  const daySet = new Set(row.map((d) => localDateKey(d)));
+
+  let activities = 0;
+  let liftMinutes = 0;
+  let runMeters = 0;
+  let runMinutes = 0;
+
+  for (const w of workouts) {
+    if (!daySet.has(localDateKey(new Date(w.performed_at)))) continue;
+    activities++;
+    if (w.ended_at) {
+      const ms = new Date(w.ended_at).getTime() - new Date(w.performed_at).getTime();
+      if (ms > 0) liftMinutes += Math.round(ms / 60000);
+    }
+  }
+
+  for (const r of runs) {
+    if (!daySet.has(localDateKey(new Date(r.start_time)))) continue;
+    activities++;
+    runMeters += r.distance_meters;
+    runMinutes += Math.round(r.duration_seconds / 60);
+  }
+
+  return { activities, liftMinutes, runMeters, runMinutes };
+}
+
 function MonthGrid({
   grid,
   monthAnchor,
   selectedDay,
   workoutsByDay,
   runsByDay,
+  workouts,
+  runs,
+  distanceUnit,
   onSelect,
 }: {
   grid: Date[];
@@ -290,9 +351,14 @@ function MonthGrid({
   selectedDay: Date;
   workoutsByDay: Map<string, Workout[]>;
   runsByDay: Map<string, RunningSession[]>;
+  workouts: Workout[];
+  runs: RunningSession[];
+  distanceUnit: DistanceUnit;
   onSelect: (d: Date) => void;
 }) {
   const today = startOfLocalDay(new Date());
+  const todayKey = localDateKey(today);
+
   // 42 cells laid out as 6 explicit rows of 7 cells at flex-1 each
   // — same primitive the DayLabelsRow uses above, so columns line
   // up by construction. Earlier revisions used a single
@@ -304,65 +370,103 @@ function MonthGrid({
   for (let r = 0; r < 6; r++) {
     rows.push(grid.slice(r * 7, r * 7 + 7));
   }
+
+  // Memoize per-week rollups off workouts/runs/grid so chips don't
+  // recompute on every selectedDay change.
+  const weeklyStats = useMemo(
+    () => rows.map((row) => computeWeeklyStat(row, workouts, runs)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [workouts, runs, grid],
+  );
+
   return (
     <View className="px-2">
-      {rows.map((row, rowIdx) => (
-        <View key={rowIdx} className="flex-row">
-          {row.map((d) => {
-            const inMonth = d.getMonth() === monthAnchor.getMonth();
-            const isToday = sameLocalDay(d, today);
-            const isSelected = sameLocalDay(d, selectedDay);
-            const key = localDateKey(d);
-            const hasWorkouts = (workoutsByDay.get(key)?.length ?? 0) > 0;
-            const hasRuns = (runsByDay.get(key)?.length ?? 0) > 0;
-            return (
-              <Pressable
-                key={d.toISOString()}
-                onPress={() => onSelect(startOfLocalDay(d))}
-                accessibilityRole="button"
-                accessibilityLabel={d.toLocaleDateString("en-US", {
-                  weekday: "long",
-                  month: "long",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-                className="h-12 flex-1 items-center justify-center"
-              >
-                <View
-                  className={`h-9 w-9 items-center justify-center rounded-full ${
-                    isSelected ? "bg-accent" : isToday ? "border border-accent/60" : ""
-                  }`}
-                >
-                  <Text
-                    className={`text-sm tabular-nums ${
-                      isSelected
-                        ? "font-semibold text-accent-fg"
-                        : inMonth
-                          ? "text-foreground"
-                          : "text-muted/60"
-                    }`}
+      {rows.map((row, rowIdx) => {
+        const stat = weeklyStats[rowIdx];
+        // Current week: any day in the row matches today's local date key.
+        const isCurrent = row.some((d) => localDateKey(d) === todayKey);
+
+        // Build chip text: activities always shown, lift duration, run
+        // distance, run duration — zero values omitted.
+        const chipParts: string[] = [
+          `${stat.activities} ${stat.activities === 1 ? "activity" : "activities"}`,
+        ];
+        if (stat.liftMinutes > 0) chipParts.push(formatTotalDuration(stat.liftMinutes));
+        if (stat.runMeters > 0)
+          chipParts.push(`${formatDistance(stat.runMeters, distanceUnit)} ${distanceUnit}`);
+        if (stat.runMinutes > 0) chipParts.push(formatTotalDuration(stat.runMinutes));
+        const chipText = chipParts.join(" · ");
+
+        return (
+          <View key={rowIdx}>
+            <View className="flex-row">
+              {row.map((d) => {
+                const inMonth = d.getMonth() === monthAnchor.getMonth();
+                const isToday = sameLocalDay(d, today);
+                const isSelected = sameLocalDay(d, selectedDay);
+                const key = localDateKey(d);
+                const hasWorkouts = (workoutsByDay.get(key)?.length ?? 0) > 0;
+                const hasRuns = (runsByDay.get(key)?.length ?? 0) > 0;
+                return (
+                  <Pressable
+                    key={d.toISOString()}
+                    onPress={() => onSelect(startOfLocalDay(d))}
+                    accessibilityRole="button"
+                    accessibilityLabel={d.toLocaleDateString("en-US", {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
+                    className="h-12 flex-1 items-center justify-center"
                   >
-                    {d.getDate()}
-                  </Text>
-                </View>
-                {/* Dot row: workout dot (accent/white) + run dot (teal), side by side */}
-                {(hasWorkouts || hasRuns) && (
-                  <View className="mt-0.5 flex-row items-center gap-0.5">
-                    {hasWorkouts && (
-                      <View
-                        className={`h-1 w-1 rounded-full ${
-                          isSelected ? "bg-accent-fg" : "bg-accent"
+                    <View
+                      className={`h-9 w-9 items-center justify-center rounded-full ${
+                        isSelected ? "bg-accent" : isToday ? "border border-accent/60" : ""
+                      }`}
+                    >
+                      <Text
+                        className={`text-sm tabular-nums ${
+                          isSelected
+                            ? "font-semibold text-accent-fg"
+                            : inMonth
+                              ? "text-foreground"
+                              : "text-muted/60"
                         }`}
-                      />
+                      >
+                        {d.getDate()}
+                      </Text>
+                    </View>
+                    {/* Dot row: workout dot (accent/white) + run dot (teal), side by side */}
+                    {(hasWorkouts || hasRuns) && (
+                      <View className="mt-0.5 flex-row items-center gap-0.5">
+                        {hasWorkouts && (
+                          <View
+                            className={`h-1 w-1 rounded-full ${
+                              isSelected ? "bg-accent-fg" : "bg-accent"
+                            }`}
+                          />
+                        )}
+                        {hasRuns && <View className="h-1 w-1 rounded-full bg-teal-400" />}
+                      </View>
                     )}
-                    {hasRuns && <View className="h-1 w-1 rounded-full bg-teal-400" />}
-                  </View>
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-      ))}
+                  </Pressable>
+                );
+              })}
+            </View>
+            {/* Weekly stat chip — only rendered when the week has activities.
+                Left-aligned with pl-1 to sit flush with the Monday day cell
+                (the outer px-2 container already provides the left margin). */}
+            {stat.activities > 0 && (
+              <Text
+                className={`pb-1 pl-1 text-[10px] tabular-nums ${isCurrent ? "text-accent" : "text-muted"}`}
+              >
+                {chipText}
+              </Text>
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 }
