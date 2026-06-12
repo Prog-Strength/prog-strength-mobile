@@ -45,12 +45,18 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  // True once the user edits name/height; blocks the seed effect from
+  // clobbering in-progress edits when an unrelated profile mutation
+  // (unit toggle, avatar change) returns a fresh profile. Cleared on
+  // save so the server-confirmed values re-seed.
+  const [dirty, setDirty] = useState(false);
 
   const heightUnit = profile?.distance_unit === "km" ? "cm" : "in";
 
-  // Seed the form whenever the resolved profile (re)arrives.
+  // Seed the form whenever the resolved profile (re)arrives, unless
+  // the user has unsaved edits.
   useEffect(() => {
-    if (!profile) return;
+    if (!profile || dirty) return;
     setName(profile.display_name);
     if (profile.height_cm === null) {
       setHeight("");
@@ -62,7 +68,7 @@ export default function SettingsScreen() {
           : profile.height_cm / CM_PER_INCH;
       setHeight(String(Math.round(displayed * 10) / 10));
     }
-  }, [profile, heightUnit]);
+  }, [profile, heightUnit, dirty]);
 
   useEffect(() => {
     void refreshUsage();
@@ -93,11 +99,22 @@ export default function SettingsScreen() {
     setFormError(null);
     try {
       await update({ display_name: trimmed, height_cm });
+      setDirty(false); // let the confirmed profile re-seed the form
     } catch (err) {
       setFormError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
+  }
+
+  // Unit toggles save immediately; surface failures inline instead of
+  // letting the rejected promise vanish (the toggle would silently
+  // snap back with no explanation).
+  function saveUnit(patch: { distance_unit?: "mi" | "km"; weight_unit?: "lb" | "kg" }) {
+    setFormError(null);
+    update(patch).catch((err) => {
+      setFormError(err instanceof Error ? err.message : String(err));
+    });
   }
 
   async function changeAvatar() {
@@ -218,7 +235,10 @@ export default function SettingsScreen() {
         <Field label="Display name">
           <TextInput
             value={name}
-            onChangeText={setName}
+            onChangeText={(v) => {
+              setDirty(true);
+              setName(v);
+            }}
             maxLength={MAX_DISPLAY_NAME}
             autoCapitalize="words"
             editable={!saving}
@@ -229,7 +249,10 @@ export default function SettingsScreen() {
         <Field label={`Height (${heightUnit})`}>
           <TextInput
             value={height}
-            onChangeText={setHeight}
+            onChangeText={(v) => {
+              setDirty(true);
+              setHeight(v);
+            }}
             keyboardType="decimal-pad"
             editable={!saving}
             placeholder="Not set"
@@ -268,10 +291,7 @@ export default function SettingsScreen() {
             ]}
             value={profile?.distance_unit ?? "mi"}
             disabled={saving}
-            onChange={(v) => {
-              setFormError(null);
-              void update({ distance_unit: v });
-            }}
+            onChange={(v) => saveUnit({ distance_unit: v })}
           />
         </Field>
         <Field label="Weight">
@@ -282,10 +302,7 @@ export default function SettingsScreen() {
             ]}
             value={profile?.weight_unit ?? "lb"}
             disabled={saving}
-            onChange={(v) => {
-              setFormError(null);
-              void update({ weight_unit: v });
-            }}
+            onChange={(v) => saveUnit({ weight_unit: v })}
           />
         </Field>
       </Section>

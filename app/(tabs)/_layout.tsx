@@ -32,12 +32,11 @@ export default function TabsLayout() {
         router.replace("/login");
       } else {
         setReady(true);
-        // First fetch for the shared contexts. Guarded so a re-mount
-        // of the tab tree doesn't double-fetch a warm profile.
-        if (!profile) {
-          void refreshProfile();
-          void refreshUsage();
-        }
+        // First fetch for the shared contexts. Profile is guarded so a
+        // re-mount of the tab tree doesn't double-fetch a warm one;
+        // usage is advisory and date-scoped, so always re-snapshot it.
+        if (!profile) void refreshProfile();
+        void refreshUsage();
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per mount
