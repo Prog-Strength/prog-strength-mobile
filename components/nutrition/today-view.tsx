@@ -29,6 +29,7 @@ import {
 import { MacroGoalRings } from "@/components/nutrition/macro-goal-rings";
 import { MacroGoalsSheet } from "@/components/nutrition/macro-goals-sheet";
 import { QuickAddSheet } from "@/components/nutrition/quick-add-sheet";
+import { LogEntryEditSheet } from "@/components/nutrition/log-entry-edit-sheet";
 
 // Pin the meal section order regardless of API response ordering.
 // What users mentally expect a day to read like.
@@ -49,6 +50,7 @@ export function TodayView() {
   const [goals, setGoals] = useState<MacroGoals | null>(null);
   const [showGoalsSheet, setShowGoalsSheet] = useState(false);
   const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [editEntry, setEditEntry] = useState<NutritionLogEntry | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logBusy, setLogBusy] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
@@ -181,6 +183,10 @@ export function TodayView() {
       .finally(() => setLogBusy(false));
   }
 
+  function handleEditSaved(updated: NutritionLogEntry) {
+    setEntries((prev) => (prev ? prev.map((e) => (e.id === updated.id ? updated : e)) : prev));
+  }
+
   function handleDelete(ids: string[]) {
     if (ids.length === 0) return;
     const groupKey = ids.join(",");
@@ -234,6 +240,7 @@ export function TodayView() {
             pantryByID={pantryByID}
             recipeByID={recipeByID}
             rowBusyID={rowBusyID}
+            onEdit={setEditEntry}
             onDelete={handleDelete}
           />
         )}
@@ -262,6 +269,23 @@ export function TodayView() {
         onLogCustom={handleLogCustom}
         onClose={() => setShowQuickAdd(false)}
       />
+
+      {editEntry && (
+        <LogEntryEditSheet
+          open={editEntry !== null}
+          entry={editEntry}
+          itemName={
+            editEntry.custom_meal_name ??
+            (editEntry.pantry_item_id
+              ? (pantryByID.get(editEntry.pantry_item_id)?.name ?? "Unknown item")
+              : editEntry.recipe_id
+                ? (recipeByID.get(editEntry.recipe_id)?.name ?? "Unknown recipe")
+                : "Log entry")
+          }
+          onSaved={handleEditSaved}
+          onClose={() => setEditEntry(null)}
+        />
+      )}
     </View>
   );
 }
@@ -314,12 +338,14 @@ function MealSections({
   pantryByID,
   recipeByID,
   rowBusyID,
+  onEdit,
   onDelete,
 }: {
   entries: NutritionLogEntry[];
   pantryByID: Map<string, PantryItem>;
   recipeByID: Map<string, Recipe>;
   rowBusyID: string | null;
+  onEdit: (entry: NutritionLogEntry) => void;
   onDelete: (ids: string[]) => void;
 }) {
   const byMeal = useMemo(() => {
@@ -354,6 +380,7 @@ function MealSections({
           pantryByID={pantryByID}
           recipeByID={recipeByID}
           rowBusyID={rowBusyID}
+          onEdit={onEdit}
           onDelete={onDelete}
         />
       ))}
@@ -371,6 +398,8 @@ type EntryGroup = {
   fat_g: number;
   carbs_g: number;
   entryIDs: string[];
+  /** The first NutritionLogEntry in the group, used for the edit sheet. */
+  firstEntry: NutritionLogEntry;
 };
 
 function MealSection({
@@ -379,6 +408,7 @@ function MealSection({
   pantryByID,
   recipeByID,
   rowBusyID,
+  onEdit,
   onDelete,
 }: {
   meal: MealType;
@@ -386,6 +416,7 @@ function MealSection({
   pantryByID: Map<string, PantryItem>;
   recipeByID: Map<string, Recipe>;
   rowBusyID: string | null;
+  onEdit: (entry: NutritionLogEntry) => void;
   onDelete: (ids: string[]) => void;
 }) {
   // Collapse multiple logs of the same pantry item / recipe inside a
@@ -400,7 +431,7 @@ function MealSection({
         ? (pantryByID.get(e.pantry_item_id)?.name ?? "Unknown item")
         : e.recipe_id
           ? (recipeByID.get(e.recipe_id)?.name ?? "Unknown recipe")
-          : "Untitled entry";
+          : (e.custom_meal_name ?? "Untitled entry");
       const key = e.pantry_item_id
         ? `pantry:${e.pantry_item_id}`
         : e.recipe_id
@@ -418,6 +449,7 @@ function MealSection({
           fat_g: 0,
           carbs_g: 0,
           entryIDs: [],
+          firstEntry: e,
         };
         map.set(key, g);
         order.push(key);
@@ -461,6 +493,7 @@ function MealSection({
             key={g.key}
             group={g}
             busy={rowBusyID === busyKey}
+            onEdit={() => onEdit(g.firstEntry)}
             onDelete={() => onDelete(g.entryIDs)}
           />
         );
@@ -472,10 +505,12 @@ function MealSection({
 function EntryGroupRow({
   group,
   busy,
+  onEdit,
   onDelete,
 }: {
   group: EntryGroup;
   busy: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const logCount = group.entryIDs.length;
@@ -500,19 +535,36 @@ function EntryGroupRow({
           {formatNumber(group.fat_g)}g · C {formatNumber(group.carbs_g)}g
         </Text>
       </View>
-      <Pressable
-        onPress={onDelete}
-        disabled={busy}
-        accessibilityRole="button"
-        accessibilityLabel={logCount > 1 ? `Delete all ${logCount} logs` : "Delete"}
-        className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
-      >
-        {busy ? (
-          <ActivityIndicator color="#ef4444" />
-        ) : (
-          <Text className="text-xs text-danger">Delete</Text>
+      {/* Row actions: Edit + Delete (44pt targets, inline buttons).
+          Edit is hidden for merged multi-log rows — editing one of
+          several grouped entries would silently target just the first;
+          those rows are delete-all only. */}
+      <View className="flex-row items-center gap-2">
+        {logCount === 1 && (
+          <Pressable
+            onPress={onEdit}
+            disabled={busy}
+            accessibilityRole="button"
+            accessibilityLabel="Edit"
+            className="min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-border bg-surface px-2 py-1 active:opacity-80 disabled:opacity-50"
+          >
+            <Text className="text-xs text-foreground">Edit</Text>
+          </Pressable>
         )}
-      </Pressable>
+        <Pressable
+          onPress={onDelete}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={logCount > 1 ? `Delete all ${logCount} logs` : "Delete"}
+          className="min-h-[44px] min-w-[44px] items-center justify-center rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
+        >
+          {busy ? (
+            <ActivityIndicator color="#ef4444" />
+          ) : (
+            <Text className="text-xs text-danger">Delete</Text>
+          )}
+        </Pressable>
+      </View>
     </View>
   );
 }
