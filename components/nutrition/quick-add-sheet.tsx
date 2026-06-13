@@ -504,7 +504,7 @@ function MacroField({
       <TextInput
         value={value}
         onChangeText={onChange}
-        keyboardType="number-pad"
+        keyboardType="decimal-pad"
         editable={!disabled}
         placeholder="0"
         placeholderTextColor="#71717a"

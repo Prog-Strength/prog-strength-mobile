@@ -3,7 +3,8 @@
 // exercise name Pressable. No sixth tab (five-tab cap); web has this as a tab.
 //
 // Data source: useExerciseCatalog() — fetched once per session by the
-// ExerciseCatalogProvider mounted in (tabs)/_layout.tsx. No auth call here.
+// ExerciseCatalogProvider mounted in app/_layout.tsx (root, so this root
+// route can consume it). No auth call here.
 //
 // Search predicate mirrors web's exactly: lower-cased substring match
 // across name + muscle_groups[] + equipment[].

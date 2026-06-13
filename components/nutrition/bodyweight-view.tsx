@@ -804,9 +804,11 @@ function BodyweightEditSheet({
     setSaving(true);
     try {
       await onSaved({ weight: w, unit });
+      // Success unmounts this sheet (parent clears editingEntry), so we
+      // deliberately don't touch state here — only the error path, which
+      // keeps the sheet open, resets the saving flag.
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setSaving(false);
     }
   }
