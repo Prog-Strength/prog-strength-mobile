@@ -13,6 +13,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
+  createCustomNutritionLogEntry,
   createNutritionLogEntry,
   deleteNutritionLogEntry,
   getMacroGoals,
@@ -147,6 +148,39 @@ export function TodayView() {
       .finally(() => setLogBusy(false));
   }
 
+  function handleLogCustom(
+    payload: {
+      name: string;
+      calories: number;
+      protein_g: number;
+      fat_g: number;
+      carbs_g: number;
+    },
+    meal: MealType,
+    consumedAt: string,
+  ): Promise<void> {
+    setLogBusy(true);
+    setLogError(null);
+    return Promise.resolve(getToken())
+      .then(async (t) => {
+        if (!t) {
+          router.replace("/login");
+          throw new Error("not signed in");
+        }
+        const entry = await createCustomNutritionLogEntry(t, {
+          ...payload,
+          meal,
+          consumed_at: consumedAt,
+        });
+        setEntries((prev) => (prev ? [entry, ...prev] : [entry]));
+      })
+      .catch((err: Error) => {
+        setLogError(err.message);
+        throw err;
+      })
+      .finally(() => setLogBusy(false));
+  }
+
   function handleDelete(ids: string[]) {
     if (ids.length === 0) return;
     const groupKey = ids.join(",");
@@ -221,9 +255,11 @@ export function TodayView() {
         open={showQuickAdd}
         pantry={pantry}
         recipes={recipes}
+        date={date}
         busy={logBusy}
         error={logError}
         onLog={handleLog}
+        onLogCustom={handleLogCustom}
         onClose={() => setShowQuickAdd(false)}
       />
     </View>
