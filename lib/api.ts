@@ -534,6 +534,7 @@ export type NutritionLogEntry = {
   consumed_at: string;
   pantry_item_id?: string | null;
   recipe_id?: string | null;
+  custom_meal_name: string | null;
   quantity: number;
   calories: number;
   protein_g: number;
@@ -556,11 +557,21 @@ export type CreateLogEntryPayload = {
   consumed_at?: string; // RFC3339; server defaults to now
 };
 
-/** Payload for editing a log entry. Omit a field to leave it unchanged. */
+/**
+ * Payload for editing a log entry. Omit a field to leave it unchanged.
+ * The `name`/`calories`/`protein_g`/`fat_g`/`carbs_g` fields are only
+ * accepted for custom entries; the server rejects them for pantry- or
+ * recipe-backed rows.
+ */
 export type UpdateLogEntryPayload = {
   quantity?: number;
   consumed_at?: string;
   meal?: MealType;
+  name?: string;
+  calories?: number;
+  protein_g?: number;
+  fat_g?: number;
+  carbs_g?: number;
 };
 
 /** Per-day aggregate from GET /nutrition-log/daily. */
@@ -686,6 +697,42 @@ export async function createNutritionLogEntry(
   payload: CreateLogEntryPayload,
 ): Promise<NutritionLogEntry> {
   const resp = await fetch(`${config.apiUrl}/nutrition-log`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const created = await unwrap<NutritionLogEntry | null>(resp, null);
+  if (!created) throw new Error("API did not return the created log entry");
+  return created;
+}
+
+/**
+ * Payload for creating a custom (one-off) log entry — a meal the user
+ * typed in directly, not backed by a saved pantry item or recipe. The
+ * macros are the totals as consumed (quantity is always 1 server-side).
+ */
+export type CreateCustomLogEntryPayload = {
+  name: string;
+  calories: number;
+  protein_g: number;
+  fat_g: number;
+  carbs_g: number;
+  meal: MealType;
+  consumed_at?: string; // RFC3339; server defaults to now
+};
+
+/**
+ * POST /nutrition-log/custom — a one-off meal with typed macros, no pantry item.
+ * Mirrors `createNutritionLogEntry`'s fetch/unwrap pattern.
+ */
+export async function createCustomNutritionLogEntry(
+  token: string,
+  payload: CreateCustomLogEntryPayload,
+): Promise<NutritionLogEntry> {
+  const resp = await fetch(`${config.apiUrl}/nutrition-log/custom`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -878,6 +925,74 @@ export async function deleteBodyweightEntry(token: string, id: string): Promise<
   }
 }
 
+/**
+ * The user's bodyweight goal. created_at / updated_at are nullable
+ * because the API returns a zero-valued row with null timestamps when
+ * the user has never set a goal — the UI uses `weight === 0` / null
+ * timestamps as the "no goal set" signal. Sibling: web lib/api.ts
+ * BodyweightGoal.
+ */
+export type BodyweightGoal = {
+  weight: number;
+  unit: "lb" | "kg";
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/**
+ * GET /me/bodyweight-goal — always 200. When no goal has been set the
+ * response carries weight=0 and null timestamps; callers should treat
+ * `weight === 0` as "unset" rather than a real target.
+ */
+export async function getBodyweightGoal(token: string): Promise<BodyweightGoal> {
+  const resp = await fetch(`${config.apiUrl}/me/bodyweight-goal`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<BodyweightGoal>(resp, {
+    weight: 0,
+    unit: "lb",
+    created_at: null,
+    updated_at: null,
+  });
+}
+
+/** PUT /me/bodyweight-goal. Set-replacement; returns the persisted row. */
+export async function putBodyweightGoal(
+  token: string,
+  goal: { weight: number; unit: "lb" | "kg" },
+): Promise<BodyweightGoal> {
+  const resp = await fetch(`${config.apiUrl}/me/bodyweight-goal`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(goal),
+  });
+  const saved = await unwrap<BodyweightGoal | null>(resp, null);
+  if (!saved) throw new Error("API did not return the saved bodyweight goal");
+  return saved;
+}
+
+/** PUT /bodyweight/{id}. Partial update — omit fields to leave them unchanged. */
+export async function updateBodyweightEntry(
+  token: string,
+  id: string,
+  payload: { weight?: number; unit?: "lb" | "kg"; measured_at?: string },
+): Promise<BodyweightEntry> {
+  const resp = await fetch(`${config.apiUrl}/bodyweight/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const updated = await unwrap<BodyweightEntry | null>(resp, null);
+  if (!updated) throw new Error("API did not return the updated bodyweight entry");
+  return updated;
+}
+
 // --- Recipes ------------------------------------------------------
 
 /**
@@ -988,6 +1103,24 @@ export async function deleteRecipe(token: string, id: string): Promise<void> {
 }
 
 // --- Chat sessions -----------------------------------------------
+
+/**
+ * A block in a multimodal chat turn. Text-only turns send a plain
+ * string; a turn carrying a photo sends ContentBlock[] (image first,
+ * then text). The agent /chat accepts `content: string | ContentBlock[]`.
+ * Image bytes never persist — the stored record uses the
+ * "[image attached] …" placeholder. Sibling: web lib/agent.ts.
+ */
+export type ContentBlock =
+  | { type: "text"; text: string }
+  | {
+      type: "image";
+      source: {
+        type: "base64";
+        media_type: "image/jpeg" | "image/png" | "image/webp";
+        data: string;
+      };
+    };
 
 /**
  * One persistent chat conversation. The API returns these from
