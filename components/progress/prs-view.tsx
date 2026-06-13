@@ -197,15 +197,32 @@ function PRCard({
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<ExerciseOneRMHistory | null>(null);
 
-  const gap = useMemo(() => {
-    if (!hasPR || record.current_estimated_1rm === null) return null;
-    if (record.weight === null) return null;
-    return record.current_estimated_1rm - record.weight;
-  }, [hasPR, record.current_estimated_1rm, record.weight]);
-  const gapPct =
-    gap !== null && record.weight !== null && record.weight > 0
-      ? (gap / record.weight) * 100
-      : null;
+  // Gap is computed with both operands converted to the same display
+  // unit (the preferred unit, like the values it renders beside) — the
+  // PR weight and estimated 1RM may be stored in different units.
+  const { gap, gapPct } = useMemo(() => {
+    if (
+      !hasPR ||
+      record.current_estimated_1rm === null ||
+      record.weight === null ||
+      record.unit === null ||
+      record.estimated_1rm_unit === null
+    ) {
+      return { gap: null, gapPct: null };
+    }
+    const to = preferred ?? record.unit;
+    const oneRm = convertWeight(record.current_estimated_1rm, record.estimated_1rm_unit, to);
+    const prWeight = convertWeight(record.weight, record.unit, to);
+    const g = oneRm - prWeight;
+    return { gap: g, gapPct: prWeight > 0 ? (g / prWeight) * 100 : null };
+  }, [
+    hasPR,
+    record.current_estimated_1rm,
+    record.weight,
+    record.unit,
+    record.estimated_1rm_unit,
+    preferred,
+  ]);
   const readyForAttempt = gapPct !== null && gapPct >= 5;
 
   const onPress = () => {

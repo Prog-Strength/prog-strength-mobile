@@ -637,7 +637,7 @@ function WorkoutRow({
           <Text
             className="text-base text-muted"
             style={{
-              transform: [{ rotate: expanded ? "180deg" : "0deg" }],
+              transform: [{ rotate: expanded ? "-90deg" : "90deg" }],
             }}
           >
             ›
@@ -761,7 +761,7 @@ function RunRow({
           <Text
             className="text-base text-muted"
             style={{
-              transform: [{ rotate: expanded ? "180deg" : "0deg" }],
+              transform: [{ rotate: expanded ? "-90deg" : "90deg" }],
             }}
           >
             ›

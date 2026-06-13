@@ -53,6 +53,10 @@ export function ProgressView() {
   const [selectedPoint, setSelectedPoint] = useState<MuscleGroupProgressionPoint | null>(null);
 
   useEffect(() => {
+    // Stale guard: a rapid pattern/timeframe toggle re-runs this effect
+    // while the previous fetch is in flight — without the flag, the
+    // slower response would land its data under the newer selection.
+    let stale = false;
     Promise.resolve(getToken())
       .then(async (t) => {
         if (!t) {
@@ -71,6 +75,7 @@ export function ProgressView() {
           listProgression(t, pattern, sinceISO, untilISO),
           listWorkouts(t, { since: sinceISO, until: untilISO, limit: 100 }),
         ]);
+        if (stale) return;
         setProgression(prog);
         setWorkouts(page.items);
       })
@@ -80,11 +85,17 @@ export function ProgressView() {
           router.replace("/login");
           return;
         }
+        if (stale) return;
         setError(err.message);
         setProgression(null);
         setWorkouts([]);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!stale) setLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
   }, [timeframe, pattern, router]);
 
   return (
