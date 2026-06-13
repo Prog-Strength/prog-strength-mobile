@@ -12,6 +12,14 @@
 // resolved by the parent). Each entry's weight is converted from its
 // as-logged unit into `unit` before charting — stored values are
 // never rewritten.
+//
+// goalY (optional): the goal weight already converted to the chart's
+// display unit. When provided the y-domain is extended to include it
+// (so the line is always visible near the data edge) and a dashed
+// green (#10b981) reference line is drawn — but only when goalY falls
+// within the padded y-domain (mirrors run-metric-chart's in-domain
+// guard so it can never draw off-plot). goalLabel is the text to
+// show next to the line.
 import { useMemo, useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, G, Line, Polyline, Text as SvgText } from "react-native-svg";
@@ -31,6 +39,7 @@ const COLOR_GRID = "#27272a";
 const COLOR_AXIS = "#a1a1aa";
 const COLOR_LINE = "#3b82f6";
 const COLOR_BG = "#18181b";
+const COLOR_GOAL = "#10b981";
 
 export type Unit = "lb" | "kg";
 
@@ -90,10 +99,18 @@ export function BodyweightChart({
   entries,
   unit,
   height = DEFAULT_HEIGHT,
+  goalY,
+  goalLabel,
 }: {
   entries: BodyweightEntry[];
   unit: Unit;
   height?: number;
+  /** Goal weight already converted to `unit`. When provided the y-domain
+   * is extended to include it and a dashed green reference line is drawn
+   * (in-domain guard matches run-metric-chart). */
+  goalY?: number;
+  /** Label shown next to the goal reference line. */
+  goalLabel?: string;
 }) {
   const [width, setWidth] = useState(0);
 
@@ -140,15 +157,20 @@ export function BodyweightChart({
   const yDomain = useMemo<[number, number] | null>(() => {
     if (rawPoints.length === 0) return null;
     const vals = rawPoints.map((p) => p.v);
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    if (min === max) {
-      const pad = Math.max(1, min * 0.02);
-      return [min - pad, max + pad];
+    const dataMin = Math.min(...vals);
+    const dataMax = Math.max(...vals);
+    // Extend to include the goal weight so the reference line is always
+    // visible when the goal is near the data edge (matches web's YAxis
+    // domain extension — min(data, goal) - 2 / max(data, goal) + 2).
+    const effectiveMin = goalY !== undefined ? Math.min(dataMin, goalY) : dataMin;
+    const effectiveMax = goalY !== undefined ? Math.max(dataMax, goalY) : dataMax;
+    if (effectiveMin === effectiveMax) {
+      const pad = Math.max(1, effectiveMin * 0.02);
+      return [effectiveMin - pad, effectiveMax + pad];
     }
-    const pad = (max - min) * 0.2;
-    return [min - pad, max + pad];
-  }, [rawPoints]);
+    const pad = (effectiveMax - effectiveMin) * 0.2;
+    return [effectiveMin - pad, effectiveMax + pad];
+  }, [rawPoints, goalY]);
 
   if (width === 0) {
     return (
@@ -258,6 +280,38 @@ export function BodyweightChart({
             fill={COLOR_LINE}
           />
         ))}
+
+        {/* Goal reference line — dashed green #10b981. Only drawn when
+            goalY falls within the padded y-domain so it can never draw
+            off-plot (mirrors run-metric-chart's in-domain guard:
+            referenceY >= yMin && referenceY <= yMax). The y-domain is
+            already extended to include goalY above, so this guard is
+            normally satisfied; it's a safety net for floating-point edge
+            cases. */}
+        {goalY !== undefined && goalY >= yMin && goalY <= yMax && (
+          <>
+            <Line
+              x1={PADDING_LEFT}
+              y1={yScale(goalY)}
+              x2={width - PADDING_RIGHT}
+              y2={yScale(goalY)}
+              stroke={COLOR_GOAL}
+              strokeWidth={1.5}
+              strokeDasharray="6 4"
+            />
+            {goalLabel !== undefined && (
+              <SvgText
+                x={width - PADDING_RIGHT - 2}
+                y={yScale(goalY) - 4}
+                fill={COLOR_GOAL}
+                fontSize={9}
+                textAnchor="end"
+              >
+                {goalLabel}
+              </SvgText>
+            )}
+          </>
+        )}
       </Svg>
     </View>
   );
