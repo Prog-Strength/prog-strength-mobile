@@ -14,7 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
 import { useProfile } from "@/lib/profile-context";
 import { useUsage } from "@/lib/usage-context";
@@ -36,6 +36,7 @@ const HEADER_OPTIONS = {
 } as const;
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { profile, loading, error, update, uploadAvatar, removeAvatar } = useProfile();
   const { usage, refresh: refreshUsage } = useUsage();
 
@@ -298,6 +299,22 @@ export default function SettingsScreen() {
             onChange={(v) => saveUnit({ weight_unit: v })}
           />
         </Field>
+      </Section>
+
+      {/* ---- Content ---- */}
+      <Section title="Content">
+        <Pressable
+          onPress={() => router.push("/exercises")}
+          accessibilityRole="button"
+          accessibilityLabel="Open exercise catalog"
+          className="min-h-11 flex-row items-center justify-between gap-3 active:opacity-80"
+        >
+          <View>
+            <Text className="text-sm text-foreground">Exercise catalog</Text>
+            <Text className="text-xs text-muted">Browse and search all exercises</Text>
+          </View>
+          <Text className="text-muted">›</Text>
+        </Pressable>
       </Section>
 
       {/* ---- Usage ---- */}

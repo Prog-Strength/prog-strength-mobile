@@ -5,7 +5,7 @@
 // matches the way they were trained (alternating sets within the
 // group). PR badges call out any records the workout produced.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import { getWorkout, type Exercise, type Workout, type WorkoutExercise } from "@/lib/api";
@@ -118,6 +118,7 @@ export default function WorkoutDetailScreen() {
                 we={chunk.we}
                 name={exerciseByID.get(chunk.we.exercise_id)?.name ?? chunk.we.exercise_id}
                 preferred={preferred}
+                onOpenCatalog={() => router.push("/exercises")}
               />
             ) : (
               <SupersetCard
@@ -125,6 +126,7 @@ export default function WorkoutDetailScreen() {
                 chunk={chunk}
                 exerciseByID={exerciseByID}
                 preferred={preferred}
+                onOpenCatalog={() => router.push("/exercises")}
               />
             ),
           )}
@@ -169,15 +171,25 @@ function ExerciseCard({
   we,
   name,
   preferred,
+  onOpenCatalog,
 }: {
   we: WorkoutExercise;
   name: string;
   preferred: "lb" | "kg" | undefined;
+  onOpenCatalog: () => void;
 }) {
   return (
     <View className="rounded-lg border border-border bg-surface px-4 py-3">
       <View className="flex-row items-baseline justify-between gap-3">
-        <Text className="flex-1 text-base font-medium text-foreground">{name}</Text>
+        <Pressable
+          className="min-h-11 flex-1 justify-center active:opacity-70"
+          onPress={onOpenCatalog}
+          accessibilityRole="link"
+          accessibilityLabel={`${name} — open exercise catalog`}
+          hitSlop={6}
+        >
+          <Text className="text-base font-medium text-foreground">{name}</Text>
+        </Pressable>
         <Text className="text-xs text-muted">
           {we.sets.length} {we.sets.length === 1 ? "set" : "sets"}
         </Text>
@@ -194,10 +206,12 @@ function SupersetCard({
   chunk,
   exerciseByID,
   preferred,
+  onOpenCatalog,
 }: {
   chunk: { type: "superset"; group: number; exercises: WorkoutExercise[] };
   exerciseByID: Map<string, Exercise>;
   preferred: "lb" | "kg" | undefined;
+  onOpenCatalog: () => void;
 }) {
   const totalSets = chunk.exercises.reduce((n, we) => n + we.sets.length, 0);
   return (
@@ -219,9 +233,17 @@ function SupersetCard({
             className={i === 0 ? "mt-2" : "mt-3 border-t border-border/40 pt-3"}
           >
             <View className="flex-row items-baseline justify-between gap-3">
-              <Text className="flex-1 text-sm font-medium text-foreground">
-                <Text className="text-accent">{letter}</Text> {name}
-              </Text>
+              <Pressable
+                className="min-h-11 flex-1 justify-center active:opacity-70"
+                onPress={onOpenCatalog}
+                accessibilityRole="link"
+                accessibilityLabel={`${name} — open exercise catalog`}
+                hitSlop={6}
+              >
+                <Text className="text-sm font-medium text-foreground">
+                  <Text className="text-accent">{letter}</Text> {name}
+                </Text>
+              </Pressable>
               <Text className="text-xs text-muted">
                 {we.sets.length} {we.sets.length === 1 ? "set" : "sets"}
               </Text>
