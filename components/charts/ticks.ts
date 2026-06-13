@@ -34,3 +34,20 @@ export function niceXTicks(min: number, max: number, count: number): number[] {
   for (let i = 0; i < count; i++) ticks.push(min + step * i);
   return ticks;
 }
+
+/** Percent-domain y ticks: snaps steps to 5/10/15/20/25/50-style increments. */
+export function niceYTicksPercent(min: number, max: number, count: number): number[] {
+  if (max <= min) return [min];
+  const step = (max - min) / (count - 1);
+  // Snap step to a nearby 5%/10%/25% increment so the labels read clean.
+  const snap = [0.05, 0.1, 0.15, 0.2, 0.25, 0.5].reduce(
+    (best, s) => (Math.abs(s - step) < Math.abs(best - step) ? s : best),
+    0.25,
+  );
+  const start = Math.floor(min / snap) * snap;
+  const ticks: number[] = [];
+  for (let v = start; v <= max + 1e-9; v += snap) {
+    if (v >= min - 1e-9) ticks.push(Math.round(v * 100) / 100);
+  }
+  return ticks;
+}

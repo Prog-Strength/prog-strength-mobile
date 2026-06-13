@@ -321,42 +321,74 @@ export type ExerciseBaseline = {
   unit: "lb" | "kg" | "";
 };
 
-/**
- * GET /workouts/progression response. Currently driven by the
- * `muscle_group` query parameter; future filters (exercise_id,
- * equipment, etc.) will produce different response shapes returned
- * from the same endpoint. See
- * prog-strength-docs/sows/estimated-one-rep-max-time-series-table.md.
- */
-export type MuscleGroupProgression = {
-  muscle_group: string;
-  since: string;
-  until: string;
-  exercise_baselines: ExerciseBaseline[];
-  points: MuscleGroupProgressionPoint[];
-  // Single combined trendline through every normalized point.
-  // Null when there are fewer than 2 points or all share the same X.
+/** Echo of the progression request, with the server-resolved muscle groups. */
+export type ProgressionFilterInfo = {
+  movement_pattern?: string;
+  // Legacy single-muscle-group filter; unused by the modern flow.
+  muscle_group?: string;
+  muscle_groups_included: string[];
+};
+
+/** Least-squares trend for one exercise within the query window. */
+export type PerExerciseTrend = {
+  exercise_id: string;
+  session_count: number;
+  // %/month; null when below the session threshold or degenerate.
+  slope_per_month: number | null;
   trendline: Trendline | null;
 };
 
 /**
- * GET /workouts/progression?muscle_group=...&since=...&until=...
+ * Defensible aggregate stats built on top of the per-exercise slopes.
+ * `min_sessions_threshold` is surfaced so the UI's "not enough data"
+ * copy isn't hard-coded. `median_slope_per_month` is null when no
+ * exercise clears the session threshold.
+ */
+export type ProgressionAggregate = {
+  lifts_tracked: number;
+  lifts_progressing: number;
+  median_slope_per_month: number | null;
+  min_sessions_threshold: number;
+};
+
+/**
+ * GET /workouts/progression response. Driven by the `movement_pattern`
+ * query parameter; the backend resolves the pattern to muscle groups
+ * (echoed in filter.muscle_groups_included), normalizes each exercise
+ * against its own recency-weighted baseline, and returns per-exercise
+ * trends + aggregate stats ready to plot.
  *
- * Requires auth. The backend resolves the muscle-group filter into
- * every exercise that targets it, reads each exercise's 1RM history,
- * computes a recency-weighted current baseline per exercise, and
- * returns normalized points + a single trendline ready to plot.
- *
- * Timestamps are RFC3339; if either is omitted, the server defaults
- * to the last 90 days.
+ * `baseline_model` is the discriminator the UI uses to label what
+ * "100%" means (today: "recency_weighted_current"). The single
+ * cross-exercise top-level trendline of the prior shape is gone — the
+ * trend layer is now per-exercise. See
+ * prog-strength-docs/sows/progress-page-modernization.md.
+ */
+export type MuscleGroupProgression = {
+  filter: ProgressionFilterInfo;
+  since: string;
+  until: string;
+  baseline_model: string; // e.g. "recency_weighted_current"
+  exercise_baselines: ExerciseBaseline[];
+  points: MuscleGroupProgressionPoint[];
+  per_exercise_trends: PerExerciseTrend[];
+  aggregate: ProgressionAggregate | null;
+};
+
+export type MovementPattern = "push" | "pull" | "legs" | "core" | "all";
+
+/**
+ * GET /workouts/progression?movement_pattern=…&since=…&until=….
+ * The server resolves the pattern to muscle groups (echoed in
+ * filter.muscle_groups_included). since/until default to 90d server-side.
  */
 export async function listProgression(
   token: string,
-  muscleGroup: string,
+  movementPattern: MovementPattern,
   since?: string,
   until?: string,
 ): Promise<MuscleGroupProgression> {
-  const params = new URLSearchParams({ muscle_group: muscleGroup });
+  const params = new URLSearchParams({ movement_pattern: movementPattern });
   if (since) params.set("since", since);
   if (until) params.set("until", until);
   const resp = await fetch(`${config.apiUrl}/workouts/progression?${params.toString()}`, {
@@ -367,12 +399,14 @@ export async function listProgression(
   const got = await unwrap<MuscleGroupProgression | null>(resp, null);
   return (
     got ?? {
-      muscle_group: muscleGroup,
+      filter: { movement_pattern: movementPattern, muscle_groups_included: [] },
       since: since ?? "",
       until: until ?? "",
+      baseline_model: "recency_weighted_current",
       exercise_baselines: [],
       points: [],
-      trendline: null,
+      per_exercise_trends: [],
+      aggregate: null,
     }
   );
 }
@@ -1442,4 +1476,132 @@ export async function importRunningTcx(token: string, file: PickedFile): Promise
   const got = await unwrap<RunningSession | null>(resp, null);
   if (!got) throw new Error("API did not return the imported activity");
   return got;
+}
+
+// --- Running best efforts + progression history ------------------
+//
+// "Best efforts" are running PRs: the fastest window of each standard
+// distance (1mi, 2mi, 5K, 10K, half marathon, marathon) found inside any
+// of the user's running activities — including a fast segment embedded in
+// a longer run. The API stays metric (distance in meters, pace in
+// seconds-per-kilometer); the DistanceUnitContext converts toward the
+// user's preferred unit at render time. See
+// prog-strength-docs/sows/running-best-efforts.md §API Surface.
+
+/**
+ * One running PR row: the user's current best at a single standard
+ * distance, plus the activity that set it. `pace_sec_per_km` is derived
+ * server-side from `duration_seconds / (distance_meters / 1000)`.
+ */
+export type RunningBestEffort = {
+  distance_key: string;
+  distance_label: string;
+  distance_meters: number;
+  duration_seconds: number;
+  pace_sec_per_km: number;
+  activity_id: string;
+  activity_start_time: string; // RFC3339
+};
+
+/**
+ * One point in a distance's progression series — an activity that
+ * achieved a best effort at that distance, with the time it ran.
+ */
+export type BestEffortPoint = {
+  activity_id: string;
+  activity_start_time: string; // RFC3339
+  duration_seconds: number;
+};
+
+/**
+ * Progression history for a single standard distance: every activity that
+ * achieved a best effort at it, ascending by `activity_start_time`, so a
+ * line chart consumes `points` without re-sorting.
+ */
+export type RunningBestEffortHistory = {
+  distance_key: string;
+  distance_label: string;
+  distance_meters: number;
+  points: BestEffortPoint[];
+};
+
+/**
+ * One point in an exercise's estimated-1RM progression series — the max
+ * estimated 1RM across a single workout's sets on that exercise.
+ */
+export type OneRMHistoryPoint = {
+  workout_id: string;
+  performed_at: string; // RFC3339
+  estimated_1rm: number;
+};
+
+/**
+ * Per-exercise estimated-1RM time series. `unit` is the lifter's stored
+ * weight unit for the series; `points` is one entry per workout in which
+ * the exercise was performed, ascending by `performed_at`.
+ */
+export type ExerciseOneRMHistory = {
+  exercise_id: string;
+  exercise_name: string;
+  unit: "lb" | "kg";
+  points: OneRMHistoryPoint[];
+};
+
+/**
+ * GET /running/best-efforts. Returns the authed user's current best across
+ * each standard distance, sorted shortest first. Distances the user has
+ * never covered are omitted from the list.
+ */
+export async function listRunningBestEfforts(token: string): Promise<RunningBestEffort[]> {
+  const resp = await fetch(`${config.apiUrl}/running/best-efforts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const got = await unwrap<{ best_efforts: RunningBestEffort[] }>(resp, { best_efforts: [] });
+  return got.best_efforts ?? [];
+}
+
+/**
+ * GET /running/best-efforts/{distance_key}/history. Returns the
+ * progression series for one standard distance. 404 (surfaced as a thrown
+ * Error) if `distanceKey` isn't a standard distance.
+ */
+export async function getRunningBestEffortHistory(
+  token: string,
+  distanceKey: string,
+): Promise<RunningBestEffortHistory> {
+  const resp = await fetch(
+    `${config.apiUrl}/running/best-efforts/${encodeURIComponent(distanceKey)}/history`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return unwrap<RunningBestEffortHistory>(resp, {
+    distance_key: distanceKey,
+    distance_label: "",
+    distance_meters: 0,
+    points: [],
+  });
+}
+
+/**
+ * GET /personal-records/{exercise_id}/history. Returns the per-workout
+ * estimated-1RM series for one exercise. 404 (surfaced as a thrown Error)
+ * if the slug isn't in the exercise catalog.
+ */
+export async function getExerciseOneRMHistory(
+  token: string,
+  exerciseId: string,
+): Promise<ExerciseOneRMHistory> {
+  const resp = await fetch(
+    `${config.apiUrl}/personal-records/${encodeURIComponent(exerciseId)}/history`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return unwrap<ExerciseOneRMHistory>(resp, {
+    exercise_id: exerciseId,
+    exercise_name: "",
+    unit: "lb",
+    points: [],
+  });
 }
