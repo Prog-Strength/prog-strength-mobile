@@ -11,6 +11,10 @@
 //     documented "no SecureStore round trip at mount" property — the
 //     first fetch is triggered by the (tabs) auth gate after a token is
 //     confirmed
+//   - mount ExerciseCatalogProvider here (not in (tabs)) because the
+//     /exercises catalog screen is a root route OUTSIDE the tab group;
+//     listExercises is a public endpoint, so no auth gate is needed and
+//     the catalog is still fetched once per session
 //
 // Auth-gating happens in app/index.tsx and (tabs)/_layout.tsx — keeping
 // this layout thin means a Stack route can render without paying the
@@ -22,6 +26,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ProfileProvider } from "@/lib/profile-context";
 import { UsageProvider } from "@/lib/usage-context";
+import { ExerciseCatalogProvider } from "@/components/exercise-catalog-context";
 
 export default function RootLayout() {
   return (
@@ -29,8 +34,10 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <ProfileProvider>
           <UsageProvider>
-            <StatusBar style="light" />
-            <Stack screenOptions={{ headerShown: false }} />
+            <ExerciseCatalogProvider>
+              <StatusBar style="light" />
+              <Stack screenOptions={{ headerShown: false }} />
+            </ExerciseCatalogProvider>
           </UsageProvider>
         </ProfileProvider>
       </SafeAreaProvider>

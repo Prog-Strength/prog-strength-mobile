@@ -4,6 +4,12 @@
 // presentationStyle="pageSheet" so iOS gives us the standard
 // slide-up card.
 //
+// The sheet has two tabs (SegmentedControl): "Saved" (existing
+// pantry/recipe picker) and "Custom" (free-form name + macros).
+// Web reference: components/quick-add-modal.tsx (3-tab: Pantry /
+// Recipes / Custom). Mobile combines Pantry + Recipes into a single
+// "Saved" picker so two tabs are the right mobile equivalent.
+//
 // onLog returns a Promise so the sheet can close itself on success
 // (the new entry appears in the meal sections behind the now-
 // dismissed sheet). On failure the sheet stays open and surfaces the
@@ -31,18 +37,28 @@ const MEAL_SEGMENTS: readonly Segment<MealType>[] = [
   { value: "snack", label: "S" },
 ];
 
+type SourceTab = "saved" | "custom";
+const SOURCE_SEGMENTS: readonly Segment<SourceTab>[] = [
+  { value: "saved", label: "Saved" },
+  { value: "custom", label: "Custom" },
+];
+
 export function QuickAddSheet({
   open,
   pantry,
   recipes,
+  date,
   busy,
   error,
   onLog,
+  onLogCustom,
   onClose,
 }: {
   open: boolean;
   pantry: PantryItem[];
   recipes: Recipe[];
+  /** Currently-selected calendar day. Drives consumed_at: now if today, else noon of that day. */
+  date: Date;
   busy: boolean;
   error: string | null;
   onLog: (
@@ -50,8 +66,20 @@ export function QuickAddSheet({
     quantity: number,
     meal: MealType,
   ) => Promise<void>;
+  onLogCustom: (
+    payload: {
+      name: string;
+      calories: number;
+      protein_g: number;
+      fat_g: number;
+      carbs_g: number;
+    },
+    meal: MealType,
+    consumedAt: string,
+  ) => Promise<void>;
   onClose: () => void;
 }) {
+  const [sourceTab, setSourceTab] = useState<SourceTab>("saved");
   const [meal, setMeal] = useState<MealType>(() => defaultMealForLocalHour(new Date()));
   const [selection, setSelection] = useState<{
     kind: "pantry" | "recipe";
@@ -61,19 +89,48 @@ export function QuickAddSheet({
   const [quantity, setQuantity] = useState<string>("1");
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // Custom-tab state — string-backed so the user can clear a field
+  // without it snapping to 0 mid-edit (mirrors macro-goals-sheet).
+  const [customName, setCustomName] = useState<string>("");
+  const [customCalories, setCustomCalories] = useState<string>("");
+  const [customProtein, setCustomProtein] = useState<string>("");
+  const [customFat, setCustomFat] = useState<string>("");
+  const [customCarbs, setCustomCarbs] = useState<string>("");
+  const [localError, setLocalError] = useState<string | null>(null);
+
   // When the sheet opens fresh, reset the form to sensible defaults
   // so a stale prior selection doesn't carry over from a dismissed
   // session. The meal re-inferences on open since the user is
   // starting a new log action.
   useEffect(() => {
     if (!open) return;
+    setSourceTab("saved");
     setSelection(null);
     setQuantity("1");
     setMeal(defaultMealForLocalHour(new Date()));
     setPickerOpen(false);
+    setCustomName("");
+    setCustomCalories("");
+    setCustomProtein("");
+    setCustomFat("");
+    setCustomCarbs("");
+    setLocalError(null);
   }, [open]);
 
-  async function submit() {
+  // Clear inline validation when the user switches tabs.
+  function selectSourceTab(next: SourceTab) {
+    setSourceTab(next);
+    setLocalError(null);
+  }
+
+  // consumed_at: now if logging to today, else noon of the selected
+  // day — same derivation the web QuickAddModal uses.
+  function computeConsumedAt(): string {
+    const isToday = sameLocalDay(date, new Date());
+    return (isToday ? new Date() : new Date(date.getTime() + 12 * 60 * 60 * 1000)).toISOString();
+  }
+
+  async function submitSaved() {
     const q = Number(quantity);
     if (!selection || !Number.isFinite(q) || q <= 0) return;
     try {
@@ -85,7 +142,45 @@ export function QuickAddSheet({
     }
   }
 
+  async function submitCustom() {
+    setLocalError(null);
+    const name = customName.trim();
+    if (!name) {
+      setLocalError("Name is required.");
+      return;
+    }
+    const cal = Number(customCalories || "0");
+    const p = Number(customProtein || "0");
+    const f = Number(customFat || "0");
+    const c = Number(customCarbs || "0");
+    if (![cal, p, f, c].every(Number.isFinite)) {
+      setLocalError("Macros must be numbers.");
+      return;
+    }
+    if (cal < 0 || p < 0 || f < 0 || c < 0) {
+      setLocalError("Macros must be non-negative.");
+      return;
+    }
+    try {
+      await onLogCustom(
+        { name, calories: cal, protein_g: p, fat_g: f, carbs_g: c },
+        meal,
+        computeConsumedAt(),
+      );
+      onClose();
+    } catch {
+      // Error surfaces via the `error` prop.
+    }
+  }
+
   const emptyState = pantry.length === 0 && recipes.length === 0;
+  const displayedError = error ?? localError;
+
+  // Submit-button disabled state depends on the active tab.
+  const submitDisabled =
+    busy ||
+    (sourceTab === "saved" && (!selection || Number(quantity) <= 0)) ||
+    (sourceTab === "custom" && !customName.trim());
 
   return (
     <Modal
@@ -101,7 +196,9 @@ export function QuickAddSheet({
         <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
           <View className="flex-1">
             <Text className="text-base font-semibold text-foreground">Quick add</Text>
-            <Text className="text-xs text-muted">Log a pantry item or recipe to today.</Text>
+            <Text className="text-xs text-muted">
+              Log a pantry item, recipe, or a one-off meal.
+            </Text>
           </View>
           <Pressable
             onPress={onClose}
@@ -115,17 +212,121 @@ export function QuickAddSheet({
           </Pressable>
         </View>
 
-        {emptyState ? (
+        {emptyState && sourceTab === "saved" ? (
           <View className="items-center px-4 py-8">
             <Text className="text-center text-sm font-medium text-foreground">
               Add a pantry item first
             </Text>
             <Text className="mt-1 text-center text-xs text-muted">
-              The Pantry tab lets you save foods you eat often.
+              The Pantry tab lets you save foods you eat often, or use the{" "}
+              <Text
+                className="text-accent"
+                onPress={() => selectSourceTab("custom")}
+                accessibilityRole="button"
+              >
+                Custom tab
+              </Text>{" "}
+              to log a one-off meal.
             </Text>
           </View>
         ) : (
-          <ScrollView contentContainerClassName="gap-4 px-4 py-4">
+          <ScrollView
+            contentContainerClassName="gap-4 px-4 py-4"
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Source tab: Saved | Custom */}
+            <SegmentedControl
+              value={sourceTab}
+              onChange={selectSourceTab}
+              segments={SOURCE_SEGMENTS}
+              ariaLabel="Source"
+            />
+
+            {sourceTab === "saved" && !emptyState && (
+              <>
+                <Pressable
+                  onPress={() => setPickerOpen((o) => !o)}
+                  accessibilityRole="button"
+                  className="rounded-md border border-border bg-surface px-3 py-3 active:opacity-80"
+                >
+                  <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    Item or recipe
+                  </Text>
+                  <Text className="mt-1 text-sm text-foreground">
+                    {selection ? selection.label : "Pick item or recipe…"}
+                  </Text>
+                </Pressable>
+
+                {pickerOpen && (
+                  <Picker
+                    pantry={pantry}
+                    recipes={recipes}
+                    onPick={(s) => {
+                      setSelection(s);
+                      setPickerOpen(false);
+                    }}
+                    onClose={() => setPickerOpen(false)}
+                  />
+                )}
+
+                <View className="flex-row items-center gap-3">
+                  <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    Servings
+                  </Text>
+                  <TextInput
+                    value={quantity}
+                    onChangeText={setQuantity}
+                    keyboardType="decimal-pad"
+                    editable={!busy}
+                    className="w-24 rounded-md border border-border bg-surface px-3 py-2 text-sm tabular-nums text-foreground"
+                  />
+                </View>
+              </>
+            )}
+
+            {sourceTab === "custom" && (
+              <>
+                <View className="gap-1">
+                  <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    Name
+                  </Text>
+                  <TextInput
+                    value={customName}
+                    onChangeText={setCustomName}
+                    placeholder="Chipotle chicken bowl"
+                    placeholderTextColor="#71717a"
+                    editable={!busy}
+                    className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground"
+                  />
+                </View>
+                <MacroField
+                  label="Calories"
+                  value={customCalories}
+                  onChange={setCustomCalories}
+                  disabled={busy}
+                />
+                <MacroField
+                  label="Protein (g)"
+                  value={customProtein}
+                  onChange={setCustomProtein}
+                  disabled={busy}
+                />
+                <MacroField
+                  label="Fat (g)"
+                  value={customFat}
+                  onChange={setCustomFat}
+                  disabled={busy}
+                />
+                <MacroField
+                  label="Carbs (g)"
+                  value={customCarbs}
+                  onChange={setCustomCarbs}
+                  disabled={busy}
+                />
+              </>
+            )}
+
+            {/* Shared: meal-type picker */}
             <View className="flex-row items-center gap-2">
               <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
                 Meal
@@ -141,53 +342,15 @@ export function QuickAddSheet({
               </View>
             </View>
 
-            <Pressable
-              onPress={() => setPickerOpen((o) => !o)}
-              accessibilityRole="button"
-              className="rounded-md border border-border bg-surface px-3 py-3 active:opacity-80"
-            >
-              <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                Item or recipe
-              </Text>
-              <Text className="mt-1 text-sm text-foreground">
-                {selection ? selection.label : "Pick item or recipe…"}
-              </Text>
-            </Pressable>
-
-            {pickerOpen && (
-              <Picker
-                pantry={pantry}
-                recipes={recipes}
-                onPick={(s) => {
-                  setSelection(s);
-                  setPickerOpen(false);
-                }}
-                onClose={() => setPickerOpen(false)}
-              />
-            )}
-
-            <View className="flex-row items-center gap-3">
-              <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-                Servings
-              </Text>
-              <TextInput
-                value={quantity}
-                onChangeText={setQuantity}
-                keyboardType="decimal-pad"
-                editable={!busy}
-                className="w-24 rounded-md border border-border bg-surface px-3 py-2 text-sm tabular-nums text-foreground"
-              />
-            </View>
-
-            {error && (
+            {displayedError && (
               <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
-                <Text className="text-xs text-danger">{error}</Text>
+                <Text className="text-xs text-danger">{displayedError}</Text>
               </View>
             )}
           </ScrollView>
         )}
 
-        {!emptyState && (
+        {(sourceTab === "custom" || !emptyState) && (
           <View className="flex-row items-center justify-end gap-2 border-t border-border px-4 py-3">
             <Pressable
               onPress={onClose}
@@ -198,8 +361,8 @@ export function QuickAddSheet({
               <Text className="text-sm text-foreground">Cancel</Text>
             </Pressable>
             <Pressable
-              onPress={submit}
-              disabled={busy || !selection}
+              onPress={sourceTab === "saved" ? submitSaved : submitCustom}
+              disabled={submitDisabled}
               accessibilityRole="button"
               className="rounded-md bg-accent px-4 py-2 active:opacity-80 disabled:opacity-50"
             >
@@ -322,6 +485,35 @@ function Picker({
   );
 }
 
+// --- MacroField ---------------------------------------------------
+
+function MacroField({
+  label,
+  value,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <View className="gap-1">
+      <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">{label}</Text>
+      <TextInput
+        value={value}
+        onChangeText={onChange}
+        keyboardType="decimal-pad"
+        editable={!disabled}
+        placeholder="0"
+        placeholderTextColor="#71717a"
+        className="rounded-md border border-border bg-surface px-3 py-2 text-sm tabular-nums text-foreground"
+      />
+    </View>
+  );
+}
+
 // --- helpers ------------------------------------------------------
 
 function defaultMealForLocalHour(d: Date): MealType {
@@ -330,6 +522,14 @@ function defaultMealForLocalHour(d: Date): MealType {
   if (h >= 11 && h < 15) return "lunch";
   if (h >= 17 && h < 22) return "dinner";
   return "snack";
+}
+
+function sameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
 }
 
 function formatNumber(v: number): string {

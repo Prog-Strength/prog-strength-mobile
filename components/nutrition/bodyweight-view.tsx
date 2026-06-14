@@ -1,21 +1,36 @@
 // Bodyweight view inside the Nutrition tab. Multi-per-day-aware
 // layout: time-range tabs (30/60/90/All), separator, 2×2 stat tiles
-// (avg/min/max/delta), daily-average trend chart with same-day
-// scatter, the log form (unchanged), and a paginated card list
-// replacing the prior flat scrolled history. See
-// prog-strength-docs/sows/bodyweight-multi-per-day.md.
+// (avg/min/max/delta/goal), daily-average trend chart with same-day
+// scatter + optional goal reference line, the log form (unchanged),
+// and a paginated card list with Edit + Delete row actions.
+// See prog-strength-docs/sows/bodyweight-multi-per-day.md.
 //
-// Single GET /bodyweight on mount. All filtering / aggregation /
-// pagination happens client-side off the one fetched list.
+// Single GET /bodyweight + GET /me/bodyweight-goal on mount. All
+// filtering / aggregation / pagination happens client-side.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
   createBodyweightEntry,
   deleteBodyweightEntry,
+  getBodyweightGoal,
   listBodyweight,
+  putBodyweightGoal,
+  updateBodyweightEntry,
   type BodyweightEntry,
+  type BodyweightGoal,
 } from "@/lib/api";
 import {
   BodyweightChart,
@@ -23,7 +38,7 @@ import {
   type BodyweightStats,
 } from "@/components/nutrition/bodyweight-chart";
 import { useProfile } from "@/lib/profile-context";
-import { formatWeight } from "@/lib/units";
+import { convertWeight, formatWeight } from "@/lib/units";
 
 type Unit = "lb" | "kg";
 
@@ -50,6 +65,13 @@ export function BodyweightView() {
   const [rowBusyID, setRowBusyID] = useState<string | null>(null);
   const [range, setRange] = useState<RangeKey>("30");
   const [page, setPage] = useState(1);
+
+  // Goal state
+  const [goal, setGoal] = useState<BodyweightGoal | null>(null);
+  const [showGoalSheet, setShowGoalSheet] = useState(false);
+
+  // Entry edit state
+  const [editingEntry, setEditingEntry] = useState<BodyweightEntry | null>(null);
 
   const entriesInRange = useMemo(() => {
     if (!entries) return [];
@@ -103,9 +125,22 @@ export function BodyweightView() {
       });
   }, [router]);
 
+  const refetchGoal = useCallback(() => {
+    Promise.resolve(getToken())
+      .then(async (t) => {
+        if (!t) return;
+        const g = await getBodyweightGoal(t);
+        setGoal(g);
+      })
+      .catch(() => {
+        // Goal fetch failure is non-fatal — the view still works without it.
+      });
+  }, []);
+
   useEffect(() => {
     refetch();
-  }, [refetch]);
+    refetchGoal();
+  }, [refetch, refetchGoal]);
 
   async function handleSubmit() {
     setFormError(null);
@@ -142,6 +177,26 @@ export function BodyweightView() {
     }
   }
 
+  async function handleEditSubmit(
+    id: string,
+    payload: { weight: number; unit: Unit },
+  ): Promise<void> {
+    const t = await getToken();
+    if (!t) throw new Error("not signed in");
+    await updateBodyweightEntry(t, id, payload);
+    setEditingEntry(null);
+    refetch();
+  }
+
+  // A goal counts as "set" only when it has a positive weight and a
+  // server-assigned created_at — the empty-state (weight 0 / null
+  // timestamps) means "no goal yet". Mirrors web's hasGoal check.
+  const hasGoal = goal !== null && goal.weight > 0 && goal.created_at !== null;
+
+  // Goal converted to the chart's display unit for passing into the chart.
+  const goalInPreferred =
+    hasGoal && goal ? convertWeight(goal.weight, goal.unit, preferred) : undefined;
+
   if (entries === null) {
     return (
       <View className="flex-1 items-center justify-center">
@@ -151,84 +206,141 @@ export function BodyweightView() {
   }
 
   return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-8 pt-1">
-      {error && (
-        <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
-          <Text className="text-xs text-danger">{error}</Text>
-        </View>
-      )}
-
-      <RangeTabs value={range} onChange={setRange} />
-
-      <StatTilesGrid stats={stats} />
-
-      <BodyweightChart entries={entriesInRange} unit={preferred} />
-
-      <View className="gap-2 rounded-lg border border-border bg-surface p-3">
-        <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
-          Log a reading
-        </Text>
-        <View className="flex-row items-center gap-2">
-          <TextInput
-            value={weight}
-            onChangeText={setWeight}
-            placeholder="0"
-            placeholderTextColor="#71717a"
-            keyboardType="decimal-pad"
-            editable={!busy}
-            className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-          />
-          <UnitToggle value={unit} onChange={setUnit} disabled={busy} />
-          <Pressable
-            onPress={handleSubmit}
-            disabled={busy}
-            accessibilityRole="button"
-            className="rounded-md bg-accent px-3 py-1.5 active:opacity-80 disabled:opacity-50"
-          >
-            {busy ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text className="text-xs font-medium text-accent-fg">Log</Text>
-            )}
-          </Pressable>
-        </View>
-        {formError && <Text className="text-xs text-danger">{formError}</Text>}
-      </View>
-
-      <Text className="mt-1 text-sm font-semibold text-foreground">Entries</Text>
-
-      {entriesInRange.length === 0 ? (
-        <View className="rounded-lg border border-border bg-surface px-4 py-8">
-          <Text className="text-center text-sm text-muted">
-            {entries.length === 0
-              ? "No bodyweight readings yet."
-              : "No readings in this range — try widening the time range above."}
-          </Text>
-        </View>
-      ) : (
-        <>
-          <View className="gap-2">
-            {pageEntries.map((e) => (
-              <EntryCard
-                key={e.id}
-                entry={e}
-                preferred={preferred}
-                busy={rowBusyID === e.id}
-                onDelete={() => handleDelete(e.id)}
-              />
-            ))}
+    <>
+      <ScrollView className="flex-1" contentContainerClassName="gap-3 px-4 pb-8 pt-1">
+        {error && (
+          <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
+            <Text className="text-xs text-danger">{error}</Text>
           </View>
-          {totalPages > 1 && (
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              totalCount={entriesInRange.length}
-              onPageChange={setPage}
-            />
+        )}
+
+        <RangeTabs value={range} onChange={setRange} />
+
+        <StatTilesGrid stats={stats} goal={hasGoal ? goal : null} preferred={preferred} />
+
+        <BodyweightChart
+          entries={entriesInRange}
+          unit={preferred}
+          goalY={goalInPreferred}
+          goalLabel={
+            goalInPreferred !== undefined
+              ? `${formatNumber(goalInPreferred)} ${preferred}`
+              : undefined
+          }
+        />
+
+        {/* Goal affordance — mirrors web's GoalAffordance toolbar button */}
+        <Pressable
+          onPress={() => setShowGoalSheet(true)}
+          accessibilityRole="button"
+          accessibilityLabel={
+            hasGoal && goal
+              ? `Goal ${formatNumber(convertWeight(goal.weight, goal.unit, preferred))} ${preferred} — tap to edit`
+              : "Set goal weight"
+          }
+          className="flex-row items-center gap-2 self-end rounded-md border border-border bg-surface px-3 py-2 active:opacity-80"
+        >
+          <Text className="text-xs font-semibold text-muted">Goal</Text>
+          {hasGoal && goal ? (
+            <Text className="text-xs font-semibold tabular-nums text-[#10b981]">
+              {formatNumber(convertWeight(goal.weight, goal.unit, preferred))} {preferred}
+            </Text>
+          ) : (
+            <Text className="text-xs italic text-muted">Not set</Text>
           )}
-        </>
+        </Pressable>
+
+        <View className="gap-2 rounded-lg border border-border bg-surface p-3">
+          <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+            Log a reading
+          </Text>
+          <View className="flex-row items-center gap-2">
+            <TextInput
+              value={weight}
+              onChangeText={setWeight}
+              placeholder="0"
+              placeholderTextColor="#71717a"
+              keyboardType="decimal-pad"
+              editable={!busy}
+              className="flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+            />
+            <UnitToggle value={unit} onChange={setUnit} disabled={busy} />
+            <Pressable
+              onPress={handleSubmit}
+              disabled={busy}
+              accessibilityRole="button"
+              className="rounded-md bg-accent px-3 py-1.5 active:opacity-80 disabled:opacity-50"
+            >
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-xs font-medium text-accent-fg">Log</Text>
+              )}
+            </Pressable>
+          </View>
+          {formError && <Text className="text-xs text-danger">{formError}</Text>}
+        </View>
+
+        <Text className="mt-1 text-sm font-semibold text-foreground">Entries</Text>
+
+        {entriesInRange.length === 0 ? (
+          <View className="rounded-lg border border-border bg-surface px-4 py-8">
+            <Text className="text-center text-sm text-muted">
+              {entries.length === 0
+                ? "No bodyweight readings yet."
+                : "No readings in this range — try widening the time range above."}
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View className="gap-2">
+              {pageEntries.map((e) => (
+                <EntryCard
+                  key={e.id}
+                  entry={e}
+                  preferred={preferred}
+                  busy={rowBusyID === e.id}
+                  onEdit={() => setEditingEntry(e)}
+                  onDelete={() => handleDelete(e.id)}
+                />
+              ))}
+            </View>
+            {totalPages > 1 && (
+              <Pagination
+                page={page}
+                totalPages={totalPages}
+                totalCount={entriesInRange.length}
+                onPageChange={setPage}
+              />
+            )}
+          </>
+        )}
+      </ScrollView>
+
+      {/* Goal sheet */}
+      <BodyweightGoalSheet
+        open={showGoalSheet}
+        goal={hasGoal ? goal : null}
+        preferred={preferred}
+        onSaved={(saved) => {
+          setGoal(saved);
+          setShowGoalSheet(false);
+        }}
+        onClose={() => setShowGoalSheet(false)}
+      />
+
+      {/* Entry edit sheet */}
+      {editingEntry && (
+        <BodyweightEditSheet
+          entry={editingEntry}
+          preferred={preferred}
+          onSaved={async (payload) => {
+            await handleEditSubmit(editingEntry.id, payload);
+          }}
+          onClose={() => setEditingEntry(null)}
+        />
       )}
-    </ScrollView>
+    </>
   );
 }
 
@@ -267,7 +379,27 @@ function RangeTabs({ value, onChange }: { value: RangeKey; onChange: (v: RangeKe
 
 // --- Stat tile 2x2 grid -------------------------------------------
 
-function StatTilesGrid({ stats }: { stats: BodyweightStats | null }) {
+function StatTilesGrid({
+  stats,
+  goal,
+  preferred,
+}: {
+  stats: BodyweightStats | null;
+  goal: BodyweightGoal | null;
+  preferred: Unit;
+}) {
+  // Goal in the chart's display unit for the tile value.
+  const goalValue =
+    goal !== null && goal.weight > 0 ? convertWeight(goal.weight, goal.unit, preferred) : null;
+
+  // "|goal − avg| to go" sublabel when both exist.
+  const goalSublabel =
+    goalValue !== null && stats !== null
+      ? `${formatNumber(Math.abs(goalValue - stats.avg))} ${preferred} to go`
+      : goal === null
+        ? "Not set"
+        : undefined;
+
   // 2×2 grid (not 4-wide) so each tile gets enough phone-width room
   // for the larger number + sublabel to read cleanly.
   return (
@@ -277,6 +409,13 @@ function StatTilesGrid({ stats }: { stats: BodyweightStats | null }) {
         value={stats ? formatNumber(stats.avg) : "—"}
         unit={stats?.unit}
         sublabel={stats ? `${stats.count} reading${stats.count === 1 ? "" : "s"}` : "No data"}
+      />
+      <StatTile
+        label="Goal"
+        value={goalValue !== null ? formatNumber(goalValue) : "—"}
+        unit={goalValue !== null ? preferred : undefined}
+        sublabel={goalSublabel ?? "Not set"}
+        accentColor="#10b981"
       />
       <StatTile
         label="Min"
@@ -313,17 +452,28 @@ function StatTile({
   value,
   unit,
   sublabel,
+  accentColor,
 }: {
   label: string;
   value: string;
   unit?: Unit;
   sublabel: string;
+  /** Optional color for the value text (e.g. goal tile uses green). */
+  accentColor?: string;
 }) {
   return (
     <View className="min-w-[45%] flex-1 rounded-lg border border-border bg-surface p-3">
-      <Text className="text-lg font-semibold tabular-nums text-foreground">
+      <Text
+        className="text-lg font-semibold tabular-nums text-foreground"
+        style={accentColor ? { color: accentColor } : undefined}
+      >
         {value}
-        {unit && <Text className="text-sm font-normal text-muted"> {unit}</Text>}
+        {unit && (
+          <Text className="text-sm font-normal text-muted" style={undefined}>
+            {" "}
+            {unit}
+          </Text>
+        )}
       </Text>
       <Text className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
         {label}
@@ -339,36 +489,51 @@ function EntryCard({
   entry,
   preferred,
   busy,
+  onEdit,
   onDelete,
 }: {
   entry: BodyweightEntry;
   preferred: Unit;
   busy: boolean;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
+  function showActions() {
+    Alert.alert(
+      formatWeight(entry.weight, entry.unit, preferred),
+      formatLocalDateTime(entry.measured_at),
+      [
+        { text: "Edit", onPress: onEdit },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: onDelete,
+        },
+        { text: "Cancel", style: "cancel" },
+      ],
+    );
+  }
+
   return (
-    <View className="flex-row items-center justify-between rounded-lg border border-border bg-surface p-3">
+    <Pressable
+      onPress={showActions}
+      disabled={busy}
+      accessibilityRole="button"
+      accessibilityLabel={`${formatWeight(entry.weight, entry.unit, preferred)} — tap to edit or delete`}
+      className="flex-row items-center justify-between rounded-lg border border-border bg-surface p-3 active:opacity-80 disabled:opacity-50"
+    >
       <View className="flex-1">
         <Text className="text-sm font-medium text-foreground tabular-nums">
           {formatWeight(entry.weight, entry.unit, preferred)}
         </Text>
         <Text className="mt-0.5 text-xs text-muted">{formatLocalDateTime(entry.measured_at)}</Text>
       </View>
-      <Pressable
-        onPress={onDelete}
-        disabled={busy}
-        accessibilityRole="button"
-        accessibilityLabel="Delete reading"
-        hitSlop={8}
-        className="rounded-md border border-danger/40 bg-danger/10 px-2 py-1 active:opacity-80 disabled:opacity-50"
-      >
-        {busy ? (
-          <ActivityIndicator color="#ef4444" />
-        ) : (
-          <Text className="text-xs text-danger">Delete</Text>
-        )}
-      </Pressable>
-    </View>
+      {busy ? (
+        <ActivityIndicator color="#a1a1aa" />
+      ) : (
+        <Text className="text-xs text-muted">•••</Text>
+      )}
+    </Pressable>
   );
 }
 
@@ -452,6 +617,287 @@ function UnitToggle({
         );
       })}
     </View>
+  );
+}
+
+// --- Goal sheet --------------------------------------------------
+
+/**
+ * Modal sheet for setting / editing the bodyweight goal. Mirrors the
+ * macro-goals-sheet shell: pageSheet Modal + KeyboardAvoidingView +
+ * header / scroll / footer. Weight input + lb/kg toggle; seeded from
+ * the existing goal if set, otherwise falls back to the profile's
+ * preferred unit.
+ */
+function BodyweightGoalSheet({
+  open,
+  goal,
+  preferred,
+  onSaved,
+  onClose,
+}: {
+  open: boolean;
+  goal: BodyweightGoal | null;
+  preferred: Unit;
+  onSaved: (saved: BodyweightGoal) => void;
+  onClose: () => void;
+}) {
+  const [weightStr, setWeightStr] = useState(() =>
+    goal && goal.weight > 0 ? String(goal.weight) : "",
+  );
+  const [unit, setUnit] = useState<Unit>(() => (goal ? goal.unit : preferred));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form when the sheet reopens.
+  useEffect(() => {
+    if (!open) return;
+    setWeightStr(goal && goal.weight > 0 ? String(goal.weight) : "");
+    setUnit(goal ? goal.unit : preferred);
+    setError(null);
+  }, [open, goal, preferred]);
+
+  async function save() {
+    setError(null);
+    const w = Number(weightStr);
+    if (!Number.isFinite(w) || w <= 0) {
+      setError("Goal weight must be a positive number.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const token = await getToken();
+      if (!token) throw new Error("not signed in");
+      const saved = await putBodyweightGoal(token, { weight: w, unit });
+      onSaved(saved);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const title = goal && goal.weight > 0 ? "Edit goal weight" : "Set goal weight";
+
+  return (
+    <Modal
+      visible={open}
+      onRequestClose={onClose}
+      presentationStyle="pageSheet"
+      animationType="slide"
+    >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1 bg-background"
+      >
+        <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
+          <View className="flex-1">
+            <Text className="text-base font-semibold text-foreground">{title}</Text>
+            <Text className="text-xs text-muted">Shows as a reference line on the chart.</Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={8}
+            className="rounded p-1 active:opacity-80 disabled:opacity-50"
+          >
+            <Text className="text-base text-muted">✕</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerClassName="gap-4 px-4 py-4">
+          <View className="gap-1">
+            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Goal weight
+            </Text>
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                value={weightStr}
+                onChangeText={setWeightStr}
+                keyboardType="decimal-pad"
+                placeholder="175"
+                placeholderTextColor="#71717a"
+                editable={!saving}
+                autoFocus
+                className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm tabular-nums text-foreground"
+              />
+              <UnitToggle value={unit} onChange={setUnit} disabled={saving} />
+            </View>
+          </View>
+
+          {error && (
+            <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
+              <Text className="text-xs text-danger">{error}</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <View className="flex-row items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <Pressable
+            onPress={onClose}
+            disabled={saving}
+            accessibilityRole="button"
+            className="rounded-md border border-border bg-surface px-3 py-2 active:opacity-80 disabled:opacity-50"
+          >
+            <Text className="text-sm text-foreground">Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={save}
+            disabled={saving}
+            accessibilityRole="button"
+            className="rounded-md bg-accent px-4 py-2 active:opacity-80 disabled:opacity-50"
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-sm font-medium text-accent-fg">Save</Text>
+            )}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+// --- Entry edit sheet --------------------------------------------
+
+/**
+ * Modal sheet for editing an existing bodyweight reading. Edits
+ * weight + unit only (pure-JS, OTA-safe). measured_at editing is
+ * deferred — it would require a native date-time picker to match the
+ * web's datetime-local input, and adding a native module would break
+ * the OTA-only constraint. The plan doc explicitly notes this as an
+ * acceptable deferral.
+ */
+function BodyweightEditSheet({
+  entry,
+  preferred,
+  onSaved,
+  onClose,
+}: {
+  entry: BodyweightEntry;
+  preferred: Unit;
+  onSaved: (payload: { weight: number; unit: Unit }) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [weightStr, setWeightStr] = useState(() => String(entry.weight));
+  const [unit, setUnit] = useState<Unit>(entry.unit);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset form if a different entry is selected.
+  useEffect(() => {
+    setWeightStr(String(entry.weight));
+    setUnit(entry.unit);
+    setError(null);
+  }, [entry]);
+
+  async function save() {
+    setError(null);
+    const w = Number(weightStr);
+    if (!Number.isFinite(w) || w <= 0) {
+      setError("Weight must be a positive number.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSaved({ weight: w, unit });
+      // Success unmounts this sheet (parent clears editingEntry), so we
+      // deliberately don't touch state here — only the error path, which
+      // keeps the sheet open, resets the saving flag.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal visible onRequestClose={onClose} presentationStyle="pageSheet" animationType="slide">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1 bg-background"
+      >
+        <View className="flex-row items-center justify-between border-b border-border px-4 py-3">
+          <View className="flex-1">
+            <Text className="text-base font-semibold text-foreground">Edit reading</Text>
+            <Text className="text-xs text-muted">
+              Fix weight or unit — the chart updates on save.
+            </Text>
+          </View>
+          <Pressable
+            onPress={onClose}
+            disabled={saving}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
+            hitSlop={8}
+            className="rounded p-1 active:opacity-80 disabled:opacity-50"
+          >
+            <Text className="text-base text-muted">✕</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView contentContainerClassName="gap-4 px-4 py-4">
+          <View className="gap-1">
+            <Text className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+              Weight
+            </Text>
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                value={weightStr}
+                onChangeText={setWeightStr}
+                keyboardType="decimal-pad"
+                placeholderTextColor="#71717a"
+                editable={!saving}
+                autoFocus
+                className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm tabular-nums text-foreground"
+              />
+              <UnitToggle value={unit} onChange={setUnit} disabled={saving} />
+            </View>
+          </View>
+
+          <View className="rounded-md border border-border bg-surface px-3 py-2">
+            <Text className="text-[10px] text-muted">
+              Logged: {formatLocalDateTime(entry.measured_at)}
+            </Text>
+            <Text className="mt-0.5 text-[10px] text-muted">
+              measured_at editing deferred (requires native date picker — OTA-safe deferral per
+              plan).
+            </Text>
+          </View>
+
+          {error && (
+            <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
+              <Text className="text-xs text-danger">{error}</Text>
+            </View>
+          )}
+        </ScrollView>
+
+        <View className="flex-row items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <Pressable
+            onPress={onClose}
+            disabled={saving}
+            accessibilityRole="button"
+            className="rounded-md border border-border bg-surface px-3 py-2 active:opacity-80 disabled:opacity-50"
+          >
+            <Text className="text-sm text-foreground">Cancel</Text>
+          </Pressable>
+          <Pressable
+            onPress={save}
+            disabled={saving}
+            accessibilityRole="button"
+            className="rounded-md bg-accent px-4 py-2 active:opacity-80 disabled:opacity-50"
+          >
+            {saving ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-sm font-medium text-accent-fg">Save</Text>
+            )}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 

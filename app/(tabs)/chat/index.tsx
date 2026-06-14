@@ -15,7 +15,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -25,6 +27,7 @@ import {
 } from "react-native";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as Crypto from "expo-crypto";
+import * as ImagePicker from "expo-image-picker";
 import Markdown from "react-native-markdown-display";
 import { File, Paths } from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,6 +41,7 @@ import {
   getChatSession,
   patchChatSessionTitle,
   type ChatMessage as PersistedChatMessage,
+  type ContentBlock,
 } from "@/lib/api";
 import { generateChatTitle } from "@/lib/agent";
 import {
@@ -61,9 +65,24 @@ type ToolCall = {
   state: "running" | "ok" | "error";
 };
 
+// Image-attach constraints (photo-meal-logging). 5 MB cap keeps the
+// base64 payload posted to the agent reasonable; the three MIME types
+// are the formats Claude vision accepts. Both validated client-side
+// with an Alert on rejection.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_MEDIA_TYPES: Record<string, "image/jpeg" | "image/png" | "image/webp"> = {
+  "image/jpeg": "image/jpeg",
+  "image/png": "image/png",
+  "image/webp": "image/webp",
+};
+
 type Message = {
   role: "user" | "assistant";
-  content: string;
+  // Plain string for assistant turns and text-only user turns (exactly
+  // as persisted). A user turn that carried an image holds a
+  // ContentBlock[] in-memory so the bubble can show the "[image attached]"
+  // placeholder — this never gets persisted (the API stores the string).
+  content: string | ContentBlock[];
   // Tools the agent invoked while producing this turn. Order reflects
   // call order. Persisted on the message so historical turns still
   // show "agent called X" after streaming ends.
@@ -103,6 +122,17 @@ export default function ChatScreen() {
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+
+  // The image staged for the next turn. `uri` is used for the chip
+  // thumbnail. `base64` is encoded into the agent payload at send
+  // time; the raw bytes never persist beyond this state. null = no
+  // image staged. Library-only picker for v1 (camera is a small
+  // follow-up via ActionSheet — perms already in the binary).
+  const [pendingImage, setPendingImage] = useState<{
+    uri: string;
+    base64: string;
+    mediaType: "image/jpeg" | "image/png" | "image/webp";
+  } | null>(null);
 
   // Voice mode: when on, completed assistant turns play back as
   // audio via the agent's /speak endpoint. Off by default and
@@ -387,9 +417,43 @@ export default function ChatScreen() {
     };
   }, [stopPlayback]);
 
+  // Launch the library picker, validate MIME type + file size, and
+  // stage the result into pendingImage. Library-only for v1; a camera
+  // option via ActionSheetIOS would add one line but is deferred.
+  const attachImage = useCallback(async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.7,
+      base64: true,
+    });
+    if (res.canceled || !res.assets[0]) return;
+    const a = res.assets[0];
+    const media = ALLOWED_MEDIA_TYPES[a.mimeType ?? ""];
+    if (!media) {
+      Alert.alert("Unsupported image", "Use JPG, PNG, or WebP.");
+      return;
+    }
+    if (!a.base64) {
+      Alert.alert("Couldn't read image", "Try a different photo.");
+      return;
+    }
+    // expo-image-picker's fileSize is optional; fall back to the decoded
+    // byte size of the base64 (length * 3/4) so the 5 MB cap holds even
+    // when the platform omits fileSize.
+    const bytes = a.fileSize ?? Math.floor((a.base64.length * 3) / 4);
+    if (bytes > MAX_IMAGE_BYTES) {
+      Alert.alert("Image too large", "Pick an image under 5 MB.");
+      return;
+    }
+    setPendingImage({ uri: a.uri, base64: a.base64, mediaType: media });
+  }, []);
+
   const send = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || streaming || loading || !sessionId || capped) return;
+    // Allow send when text is non-empty OR an image is staged. Image-
+    // only turns are valid (web does the same with text: trimmed || " ").
+    const img = pendingImage;
+    if ((!trimmed && !img) || streaming || loading || !sessionId || capped) return;
 
     const token = await getToken();
     if (!token) {
@@ -418,14 +482,54 @@ export default function ChatScreen() {
       setSessionPersisted(true);
     }
 
+    // The placeholder string shown in the bubble + persisted to the
+    // API. Image bytes never reach the API or the persisted record.
+    const displayContent = img
+      ? trimmed
+        ? `[image attached] ${trimmed}`
+        : "[image attached]"
+      : trimmed;
+
+    // The outgoing content for the CURRENT turn sent to streamChat.
+    // When an image is staged, build a multimodal block list (image
+    // first, then a text block — Claude requires a text block, so an
+    // image-only caption becomes a single space). Prior turns in
+    // nextMessages stay as plain strings; only the current turn
+    // carries ContentBlock[] content.
+    const currentTurnContent: string | ContentBlock[] = img
+      ? [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: img.mediaType,
+              data: img.base64,
+            },
+          },
+          { type: "text", text: trimmed || " " },
+        ]
+      : trimmed;
+
     // Optimistic update: append the user message and a placeholder
     // assistant we'll fill as deltas arrive. Doing both in one
     // setState avoids the flash where the user message renders alone.
-    const userMsg: Message = { role: "user", content: trimmed };
+    // The displayed user message uses displayContent (the placeholder
+    // string) — not the raw ContentBlock[] — so the bubble shows
+    // "[image attached] …" rather than trying to render base64 data.
+    const userMsg: Message = { role: "user", content: displayContent };
     const placeholder: Message = { role: "assistant", content: "", tools: [] };
-    const nextMessages = [...messages, userMsg];
-    setMessages([...nextMessages, placeholder]);
+    // The outgoing messages array sent to streamChat: prior messages
+    // (string content) + a synthetic current-turn entry carrying the
+    // multimodal block list when an image is present.
+    const outgoingCurrentTurn: Message = { role: "user", content: currentTurnContent };
+    const nextMessages = [...messages, outgoingCurrentTurn];
+    setMessages([...messages, userMsg, placeholder]);
     setInput("");
+    // Clear the pending image at the same point input is cleared —
+    // before streaming begins. A failed turn does NOT restore the
+    // image (matching the existing behavior where input is also not
+    // restored on error; the user re-attaches if they want to retry).
+    setPendingImage(null);
     setStreaming(true);
 
     // Cancel any audio queue / playback left over from a prior turn
@@ -526,8 +630,9 @@ export default function ChatScreen() {
       if (assistantText) {
         const toolsJSON = toolsLog.length > 0 ? JSON.stringify(toolsLog) : undefined;
         try {
+          // Persist the placeholder string, never the image bytes.
           await appendChatTurn(token, sessionId, {
-            user: { content: trimmed },
+            user: { content: displayContent },
             assistant: {
               content: assistantText,
               model: chosenModel,
@@ -543,7 +648,9 @@ export default function ChatScreen() {
           // Fire-and-forget title generation. We deliberately do NOT
           // await this — the user can keep chatting; the title
           // shows up in the history list whenever the PATCH lands.
-          void titleAndPatch(token, sessionId, trimmed, assistantText);
+          // Image-only turns use displayContent ("[image attached]")
+          // which is fine — web does the same.
+          void titleAndPatch(token, sessionId, displayContent, assistantText);
         }
 
         // Voice playback (when voiceMode is on) now rides on the
@@ -567,6 +674,7 @@ export default function ChatScreen() {
     }
   }, [
     input,
+    pendingImage,
     messages,
     router,
     sessionId,
@@ -686,6 +794,30 @@ export default function ChatScreen() {
         </View>
       )}
 
+      {pendingImage && (
+        // Staged-image chip above the composer row: 40pt thumbnail + ✕
+        // clear. The thumbnail uses the picker's URI (a local file path
+        // from the photo library). hitSlop on the dismiss button ensures
+        // the tap target is ≥44pt even though the icon is small.
+        <View className="flex-row items-center gap-2 border-t border-border bg-background px-4 pt-2">
+          <View className="flex-row items-center gap-2 rounded-lg border border-border bg-surface px-2 py-1.5">
+            <Image
+              source={{ uri: pendingImage.uri }}
+              style={{ width: 40, height: 40, borderRadius: 4 }}
+              resizeMode="cover"
+            />
+            <Pressable
+              onPress={() => setPendingImage(null)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Remove image"
+              className="active:opacity-60"
+            >
+              <Text className="text-base text-muted">✕</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       <View className="flex-row items-end gap-2 border-t border-border bg-background px-4 py-3">
         {SPEECH_SUPPORTED && (
           // Push-to-talk mic. Pressable's onPressIn/onPressOut is the
@@ -709,6 +841,15 @@ export default function ChatScreen() {
             <Ionicons name="mic" size={18} color={listening ? "#ef4444" : "#a1a1aa"} />
           </Pressable>
         )}
+        <Pressable
+          onPress={attachImage}
+          disabled={streaming || loading || !sessionId}
+          accessibilityRole="button"
+          accessibilityLabel="Attach image"
+          className="h-11 w-11 items-center justify-center rounded-lg border border-border bg-surface active:opacity-80 disabled:opacity-40"
+        >
+          <Ionicons name="image" size={18} color="#a1a1aa" />
+        </Pressable>
         <TextInput
           value={input}
           onChangeText={setInput}
@@ -723,7 +864,13 @@ export default function ChatScreen() {
         />
         <Pressable
           onPress={send}
-          disabled={capped || streaming || loading || !sessionId || input.trim().length === 0}
+          disabled={
+            capped ||
+            streaming ||
+            loading ||
+            !sessionId ||
+            (input.trim().length === 0 && !pendingImage)
+          }
           accessibilityRole="button"
           className="rounded-lg bg-accent px-4 py-2 active:opacity-80 disabled:opacity-40"
         >
@@ -811,9 +958,12 @@ function MessageBubble({
   streaming: boolean;
 }) {
   const isUser = message.role === "user";
+  const contentIsString = typeof message.content === "string";
   // Show the typing dot when this is the still-empty assistant
   // placeholder. Avoids an empty bubble before the first delta lands.
-  const showTyping = isLast && streaming && !isUser && message.content.length === 0;
+  const showTyping =
+    isLast && streaming && !isUser && contentIsString && (message.content as string).length === 0;
+  const hasContent = contentIsString ? (message.content as string).length > 0 : true; // ContentBlock[] always has visible content
 
   return (
     <View
@@ -823,13 +973,31 @@ function MessageBubble({
     >
       {showTyping ? (
         <Text className="text-sm italic text-muted">…</Text>
-      ) : message.content.length === 0 ? null : isUser ? (
+      ) : !hasContent ? null : !contentIsString ? (
+        // In-flight multimodal user turn: display the placeholder
+        // string that was stored in displayContent. By the time
+        // content is ContentBlock[] it is always a user turn with
+        // an image. We never reach here for assistant or persisted
+        // messages (those come back as strings from the API).
+        // For simplicity, render the "[image attached] …" placeholder
+        // text that mirrors what will be persisted.
+        <Text selectable className="text-sm text-accent-fg">
+          {(() => {
+            const caption = (message.content as ContentBlock[])
+              .filter((b): b is Extract<ContentBlock, { type: "text" }> => b.type === "text")
+              .map((b) => b.text.trim())
+              .filter(Boolean)
+              .join(" ");
+            return caption ? `[image attached] ${caption}` : "[image attached]";
+          })()}
+        </Text>
+      ) : isUser ? (
         // User messages: plain Text. Users don't intentionally write
         // markdown when typing into a chat composer; rendering it as
         // such would let stray asterisks/underscores reshape what
         // they wrote.
         <Text selectable className="text-sm text-accent-fg">
-          {message.content}
+          {message.content as string}
         </Text>
       ) : (
         // Assistant messages route through react-native-markdown-
@@ -839,7 +1007,7 @@ function MessageBubble({
         // NativeWind classNames), so the dark-theme colors are
         // duplicated from tailwind.config.js. Keep these in sync if
         // the theme ever changes.
-        <Markdown style={MARKDOWN_STYLES}>{message.content}</Markdown>
+        <Markdown style={MARKDOWN_STYLES}>{message.content as string}</Markdown>
       )}
 
       {message.tools && message.tools.length > 0 && (
