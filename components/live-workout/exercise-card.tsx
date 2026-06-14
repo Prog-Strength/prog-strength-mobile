@@ -7,6 +7,7 @@
 // "+ Add set" copies the last set's reps/weight/unit as the new default
 // (falling back to a zeroed set in the profile unit) and starts the rest
 // timer — logging a set is the natural moment to begin resting.
+import { useEffect, useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
 import { useActiveWorkoutSession } from "@/lib/active-workout-session";
 import { useProfile } from "@/lib/profile-context";
@@ -165,20 +166,49 @@ function SetRow({
   onUnit: (unit: "lb" | "kg") => void;
   onRemove: () => void;
 }) {
+  // Controlled inputs backed by a raw string so partial entries like "1."
+  // type smoothly while the parsed number is pushed to the draft. When the
+  // draft value changes from outside (a remove/reorder shifts which set
+  // this row represents), re-seed the raw string — but only when the
+  // parsed raw string no longer matches the incoming prop, so an
+  // in-progress partial entry isn't clobbered.
+  const [repsRaw, setRepsRaw] = useState(() => (set.reps ? String(set.reps) : ""));
+  const [weightRaw, setWeightRaw] = useState(() => (set.weight ? String(set.weight) : ""));
+
+  useEffect(() => {
+    if (parseIntInput(repsRaw) !== set.reps) {
+      setRepsRaw(set.reps ? String(set.reps) : "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [set.reps]);
+
+  useEffect(() => {
+    if (parseFloatInput(weightRaw) !== set.weight) {
+      setWeightRaw(set.weight ? String(set.weight) : "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [set.weight]);
+
   return (
     <View className="flex-row items-center gap-2">
       <Text className="w-8 text-xs text-muted">{label}</Text>
       <TextInput
-        defaultValue={set.reps ? String(set.reps) : ""}
-        onChangeText={(text) => onReps(parseIntInput(text))}
+        value={repsRaw}
+        onChangeText={(text) => {
+          setRepsRaw(text);
+          onReps(parseIntInput(text));
+        }}
         keyboardType="number-pad"
         placeholder="0"
         placeholderTextColor="#71717a"
         className="min-h-11 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm tabular-nums text-foreground"
       />
       <TextInput
-        defaultValue={set.weight ? String(set.weight) : ""}
-        onChangeText={(text) => onWeight(parseFloatInput(text))}
+        value={weightRaw}
+        onChangeText={(text) => {
+          setWeightRaw(text);
+          onWeight(parseFloatInput(text));
+        }}
         keyboardType="decimal-pad"
         placeholder="0"
         placeholderTextColor="#71717a"

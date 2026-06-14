@@ -64,7 +64,14 @@ export function SupersetCard({ group, members }: { group: number; members: Super
 
       {members.map((m, i) => {
         const letter = String.fromCharCode(65 + i);
-        const next = draft[m.index];
+        // Guard against a missing draft entry (a member index without a
+        // seeded row) so next.reps/next.weight can't throw. Mirror the
+        // seed fallback: a zeroed set in the member's last unit, else lb.
+        const next = draft[m.index] ?? {
+          reps: 0,
+          weight: 0,
+          unit: m.exercise.sets[m.exercise.sets.length - 1]?.unit ?? "lb",
+        };
         return (
           <View key={m.index} className={i === 0 ? "mt-3" : "mt-3 border-t border-border/40 pt-3"}>
             <Text className="text-sm font-medium text-foreground" numberOfLines={2}>
