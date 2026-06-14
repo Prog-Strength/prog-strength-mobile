@@ -27,18 +27,28 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ProfileProvider } from "@/lib/profile-context";
 import { UsageProvider } from "@/lib/usage-context";
 import { ExerciseCatalogProvider } from "@/components/exercise-catalog-context";
+import { ActiveWorkoutSessionProvider } from "@/lib/active-workout-session";
+import { ActiveWorkoutBanner } from "@/components/active-workout-banner";
 
 export default function RootLayout() {
   return (
     <GestureHandlerRootView className="flex-1">
       <SafeAreaProvider>
         <ProfileProvider>
-          <UsageProvider>
-            <ExerciseCatalogProvider>
-              <StatusBar style="light" />
-              <Stack screenOptions={{ headerShown: false }} />
-            </ExerciseCatalogProvider>
-          </UsageProvider>
+          {/* Inside ProfileProvider so the session can read the weight
+              unit for new-set defaults; at root (not in (tabs)) because
+              the live screen is a root route. */}
+          <ActiveWorkoutSessionProvider>
+            <UsageProvider>
+              <ExerciseCatalogProvider>
+                <StatusBar style="light" />
+                <Stack screenOptions={{ headerShown: false }} />
+                {/* App-wide in-progress pill — hides itself on the
+                    workout flow and when no session is active. */}
+                <ActiveWorkoutBanner />
+              </ExerciseCatalogProvider>
+            </UsageProvider>
+          </ActiveWorkoutSessionProvider>
         </ProfileProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
