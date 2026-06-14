@@ -99,7 +99,7 @@ function groupChunks(exercises: DraftExercise[]): Chunk[] {
 export default function ReviewWorkoutScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { session, setName, setNotes, setTimes, save, discard } = useActiveWorkoutSession();
+  const { session, setName, setNotes, save, discard } = useActiveWorkoutSession();
   const { byID } = useExerciseCatalog();
   const { profile } = useProfile();
   const preferred = profile?.weight_unit;
@@ -155,10 +155,11 @@ export default function ReviewWorkoutScreen() {
     setError(null);
     setSaving(true);
     try {
-      // Push the edited performed_at into the draft, then save with the
-      // ended_at override (undefined → provider stamps "now").
-      setTimes(performedAtRFC);
-      const created = await save(endedAtRFC || undefined);
+      // Pass the edited timestamps directly to save as explicit overrides
+      // (undefined ended_at → provider stamps "now"). Passing performed_at
+      // here avoids the async-state round-trip that previously dropped the
+      // user's edit from the payload.
+      const created = await save(endedAtRFC || undefined, performedAtRFC || undefined);
       surfacePRs(created.personal_records_set);
       // Provider already cleared the draft; route to the saved workout.
       router.replace(`/(tabs)/activities/workout/${created.id}`);

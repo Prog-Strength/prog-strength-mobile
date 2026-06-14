@@ -55,7 +55,7 @@ type ActiveWorkoutSessionValue = {
   prefill: Map<string, DraftSet>;
   start: () => void;
   discard: () => void;
-  save: (endedAt?: string) => Promise<Workout>;
+  save: (endedAt?: string, performedAt?: string) => Promise<Workout>;
   setName: (name: string) => void;
   setNotes: (notes: string) => void;
   setExerciseNotes: (exIdx: number, notes: string) => void;
@@ -152,11 +152,15 @@ export function ActiveWorkoutSessionProvider({ children }: { children: ReactNode
   }, []);
 
   const save = useCallback(
-    async (endedAt?: string): Promise<Workout> => {
+    async (endedAt?: string, performedAt?: string): Promise<Workout> => {
       if (!session) throw new Error("no active workout session to save");
       const token = await getToken();
       if (!token) throw new Error("not authenticated");
       const payload = sessionToPayload(session, endedAt ?? new Date().toISOString());
+      // Apply an explicit performed_at override directly to the payload so
+      // the review screen's edited value lands without round-tripping
+      // through async React state (symmetric with how `endedAt` flows in).
+      if (performedAt !== undefined) payload.performed_at = performedAt;
       const created = await createWorkout(token, payload);
       // Success → clear the draft (and its stored copy via write-through).
       setSession(null);
