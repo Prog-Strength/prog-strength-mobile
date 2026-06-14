@@ -5,13 +5,21 @@
 // Weeks start on Monday to match the calendar tab and how lifters
 // mentally chunk a training week.
 import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, RefreshControl, SectionList, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  SectionList,
+  Text,
+  View,
+} from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import { listWorkouts, type Workout } from "@/lib/api";
 import { WorkoutRow } from "@/components/workout-row";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 import { DurationChart } from "@/components/workouts/duration-chart";
+import { useActiveWorkoutSession } from "@/lib/active-workout-session";
 
 type WeekSection = {
   // Stable key for SectionList: YYYY-MM-DD of the week's Monday.
@@ -37,6 +45,7 @@ type WeekSection = {
 export function WorkoutsView() {
   const router = useRouter();
   const { byID: exerciseByID } = useExerciseCatalog();
+  const { session, start } = useActiveWorkoutSession();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -117,7 +126,14 @@ export function WorkoutsView() {
       SectionSeparatorComponent={() => <View className="h-2" />}
       stickySectionHeadersEnabled={false}
       ListHeaderComponent={
-        <View className="mb-3">
+        <View className="mb-3 gap-3">
+          <StartLiveWorkoutButton
+            hasSession={session !== null}
+            onStart={() => {
+              if (session === null) start();
+              router.push("/workout/live");
+            }}
+          />
           <DurationChart />
         </View>
       }
@@ -145,6 +161,29 @@ export function WorkoutsView() {
         />
       )}
     />
+  );
+}
+
+// Primary entry point into the live-logging flow. Reads "Resume
+// workout" when a draft is already in progress (just navigates), else
+// "Start live workout" (stamps a fresh session, then navigates).
+function StartLiveWorkoutButton({
+  hasSession,
+  onStart,
+}: {
+  hasSession: boolean;
+  onStart: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onStart}
+      accessibilityRole="button"
+      className="items-center justify-center rounded-full bg-accent px-4 py-3 active:opacity-80"
+    >
+      <Text className="text-sm font-semibold text-accent-fg">
+        {hasSession ? "Resume workout" : "Start live workout"}
+      </Text>
+    </Pressable>
   );
 }
 

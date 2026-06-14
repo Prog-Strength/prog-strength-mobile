@@ -16,6 +16,7 @@
     "fingerprint:update": "node scripts/native-fingerprint.js update"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~55.0.26",
     "expo-asset": "~55.0.17",
     "expo-audio": "~55.0.14",
