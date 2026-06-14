@@ -100,7 +100,9 @@ export function ActiveWorkoutSessionProvider({ children }: { children: ReactNode
       try {
         const raw = await AsyncStorage.getItem(STORAGE_KEY);
         if (!cancelled && raw) {
-          setSession(JSON.parse(raw) as ActiveSession);
+          // Don't clobber a session the user started during the brief
+          // async-read window — only adopt the stored draft if none exists.
+          setSession((cur) => cur ?? (JSON.parse(raw) as ActiveSession));
         }
       } catch {
         // Corrupt/unreadable storage → start clean.
