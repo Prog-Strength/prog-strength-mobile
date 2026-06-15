@@ -19,10 +19,20 @@ import * as ImagePicker from "expo-image-picker";
 import { useProfile } from "@/lib/profile-context";
 import { useUsage } from "@/lib/usage-context";
 import { UnitToggle } from "@/components/settings/unit-toggle";
+import { checkUsernameAvailable } from "@/lib/api";
+import { getToken } from "@/lib/auth";
 
 // Mirrors the API's display-name cap; server is authoritative.
 const MAX_DISPLAY_NAME = 60;
 const CM_PER_INCH = 2.54;
+
+// Mirrors the server's username validator: 3–30 chars, must start with a
+// lowercase letter, then lowercase letters / digits / underscores. The
+// server is authoritative (it also enforces a reserved-word list and
+// uniqueness, surfaced as 400/409 on save) — this catches the obvious
+// charset/length mistakes inline for snappier feedback.
+const USERNAME_RE = /^[a-z][a-z0-9_]{2,29}$/;
+const USERNAME_AVAILABILITY_DEBOUNCE_MS = 400;
 
 // Shared by both render paths (loading + loaded) so the dark header
 // never flashes to system defaults.
@@ -273,6 +283,35 @@ export default function SettingsScreen() {
             <Text className="text-sm font-medium text-accent-fg">Save</Text>
           )}
         </Pressable>
+
+        <UsernameRow
+          value={profile?.username ?? ""}
+          disabled={saving}
+          onSave={async (username) => {
+            await update({ username });
+          }}
+        />
+      </Section>
+
+      {/* ---- People ---- */}
+      <Section title="People">
+        <NavRow
+          label="Find people"
+          hint="Search by name or @handle"
+          onPress={() => router.push("/search")}
+        />
+        <NavRow
+          label="Follow requests"
+          hint="Accept or decline pending requests"
+          onPress={() => router.push("/requests")}
+        />
+        {profile?.username ? (
+          <NavRow
+            label="My profile"
+            hint={`@${profile.username}`}
+            onPress={() => router.push(`/u/${profile.username}`)}
+          />
+        ) : null}
       </Section>
 
       {/* ---- Units ---- */}
@@ -357,6 +396,171 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <View className="gap-1">
       <Text className="text-xs text-muted">{label}</Text>
       {children}
+    </View>
+  );
+}
+
+function NavRow({ label, hint, onPress }: { label: string; hint: string; onPress: () => void }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      className="min-h-11 flex-row items-center justify-between gap-3 active:opacity-80"
+    >
+      <View>
+        <Text className="text-sm text-foreground">{label}</Text>
+        <Text className="text-xs text-muted">{hint}</Text>
+      </View>
+      <Text className="text-muted">›</Text>
+    </Pressable>
+  );
+}
+
+type AvailabilityState =
+  | { kind: "idle" }
+  | { kind: "checking" }
+  | { kind: "available" }
+  | { kind: "taken" }
+  | { kind: "error"; message: string };
+
+/**
+ * Username (handle) editor. Lowercases input, validates charset/length
+ * inline against the server's rule, and debounce-probes availability once
+ * the candidate is valid and differs from the current handle. Save writes
+ * through the profile context; the server is authoritative and any
+ * 400 (invalid/reserved) or 409 (taken) surfaces inline + via Alert.
+ * Mirrors web settings/page.tsx UsernameRow.
+ */
+function UsernameRow({
+  value,
+  disabled,
+  onSave,
+}: {
+  value: string;
+  disabled: boolean;
+  onSave: (username: string) => Promise<void>;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [rowError, setRowError] = useState<string | null>(null);
+  const [availability, setAvailability] = useState<AvailabilityState>({ kind: "idle" });
+
+  // Re-seed when the profile loads / changes from elsewhere.
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  // The server stores handles lowercase; normalize on the way in so the
+  // charset check and the availability probe both see the canonical form.
+  const normalized = draft.trim().toLowerCase();
+  const charsetOk = USERNAME_RE.test(normalized);
+  const dirty = normalized !== value.trim().toLowerCase();
+
+  // Debounced availability probe: only when the candidate is a valid,
+  // changed handle. Cleanup cancels an in-flight timer on each keystroke.
+  useEffect(() => {
+    if (!dirty || !charsetOk) {
+      setAvailability({ kind: "idle" });
+      return;
+    }
+    setAvailability({ kind: "checking" });
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      (async () => {
+        const token = await getToken();
+        if (!token || cancelled) return;
+        try {
+          const free = await checkUsernameAvailable(token, normalized);
+          if (cancelled) return;
+          setAvailability(free ? { kind: "available" } : { kind: "taken" });
+        } catch (err: unknown) {
+          if (cancelled) return;
+          setAvailability({
+            kind: "error",
+            message: err instanceof Error ? err.message : "Couldn't check availability",
+          });
+        }
+      })();
+    }, USERNAME_AVAILABILITY_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [normalized, dirty, charsetOk]);
+
+  async function save() {
+    setRowError(null);
+    if (!charsetOk) {
+      setRowError(
+        "Usernames are 3–30 characters: start with a letter, then lowercase letters, numbers, or underscores.",
+      );
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(normalized);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Failed to save username";
+      setRowError(message);
+      Alert.alert("Username", message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const showCharsetHint = dirty && draft.trim() !== "" && !charsetOk;
+  const saveDisabled = disabled || saving || !dirty || !charsetOk || availability.kind === "taken";
+
+  return (
+    <View className="gap-2 border-t border-border pt-4">
+      <View className="gap-0.5">
+        <Text className="text-sm font-medium text-foreground">Username</Text>
+        <Text className="text-xs text-muted">
+          Your public handle and profile link. Changing it changes your profile link — the old one
+          stops working (there&apos;s no redirect).
+        </Text>
+      </View>
+      <View className="flex-row items-center gap-2">
+        <Text className="text-sm text-muted">@</Text>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          maxLength={30}
+          autoCapitalize="none"
+          autoCorrect={false}
+          spellCheck={false}
+          editable={!disabled && !saving}
+          accessibilityLabel="Username"
+          className="min-h-11 flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
+        />
+        <Pressable
+          onPress={save}
+          disabled={saveDisabled}
+          accessibilityRole="button"
+          accessibilityLabel="Save username"
+          className={`min-h-11 items-center justify-center rounded-md bg-accent px-3 py-2 active:opacity-80 ${
+            saveDisabled ? "opacity-50" : ""
+          }`}
+        >
+          <Text className="text-xs font-medium text-accent-fg">{saving ? "Saving…" : "Save"}</Text>
+        </Pressable>
+      </View>
+      {rowError ? (
+        <Text className="text-xs text-danger">{rowError}</Text>
+      ) : showCharsetHint ? (
+        <Text className="text-xs text-danger">
+          3–30 characters: start with a letter, then lowercase letters, numbers, or underscores.
+        </Text>
+      ) : availability.kind === "checking" ? (
+        <Text className="text-xs text-muted">Checking availability…</Text>
+      ) : availability.kind === "available" ? (
+        <Text className="text-xs text-success">@{normalized} is available.</Text>
+      ) : availability.kind === "taken" ? (
+        <Text className="text-xs text-danger">@{normalized} is taken.</Text>
+      ) : availability.kind === "error" ? (
+        <Text className="text-xs text-muted">{availability.message}</Text>
+      ) : null}
     </View>
   );
 }
