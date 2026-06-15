@@ -1017,6 +1017,127 @@ export async function updateBodyweightEntry(
   return updated;
 }
 
+// --- Steps --------------------------------------------------------
+
+/**
+ * One day's step count. Date-keyed (one row per calendar day) rather
+ * than timestamped like bodyweight — the API upserts on the `date`
+ * path segment. Sibling: prog-strength-web lib/api.ts StepsEntry. See
+ * prog-strength-docs/sows/daily-steps-logging.md.
+ */
+export type StepsEntry = {
+  id: string;
+  date: string; // YYYY-MM-DD
+  steps: number;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * GET /steps response. Newest-first. Range mode (since/until) and
+ * keyset mode (limit/before) mirror listRunningSessions — `next_before`
+ * is the YYYY-MM-DD cursor for the next page (null when exhausted).
+ */
+export type StepsPage = {
+  steps: StepsEntry[];
+  next_before: string | null;
+};
+
+/**
+ * The user's daily-steps goal. Mirrors BodyweightGoal's "unset" shape:
+ * GET returns goal=0 with null timestamps when no goal has been set, so
+ * callers treat `goal === 0` as "no target yet".
+ */
+export type StepsGoal = {
+  goal: number;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+/**
+ * GET /steps. Range mode (since/until, YYYY-MM-DD inclusive) and keyset
+ * mode (limit + before=YYYY-MM-DD) are mutually exclusive — the API
+ * rejects mixing them. Returns newest-first.
+ */
+export async function listSteps(
+  token: string,
+  opts: { since?: string; until?: string; limit?: number; before?: string } = {},
+): Promise<StepsPage> {
+  const params = new URLSearchParams();
+  if (opts.since) params.set("since", opts.since);
+  if (opts.until) params.set("until", opts.until);
+  if (opts.limit !== undefined) params.set("limit", String(opts.limit));
+  if (opts.before) params.set("before", opts.before);
+  const qs = params.toString();
+  const resp = await fetch(`${config.apiUrl}/steps${qs ? `?${qs}` : ""}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<StepsPage>(resp, { steps: [], next_before: null });
+}
+
+/** PUT /steps/{date} — upsert the step count for a calendar day. */
+export async function upsertStepsForDate(
+  token: string,
+  date: string,
+  steps: number,
+): Promise<StepsEntry> {
+  const resp = await fetch(`${config.apiUrl}/steps/${encodeURIComponent(date)}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ steps }),
+  });
+  const saved = await unwrap<StepsEntry | null>(resp, null);
+  if (!saved) throw new Error("API did not return the saved steps entry");
+  return saved;
+}
+
+/** DELETE /steps/{date} → 204. Throws on non-ok (mirrors deleteBodyweightEntry). */
+export async function deleteStepsForDate(token: string, date: string): Promise<void> {
+  const resp = await fetch(`${config.apiUrl}/steps/${encodeURIComponent(date)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) {
+    let detail: string;
+    try {
+      detail = (await resp.json())?.error ?? `HTTP ${resp.status}`;
+    } catch {
+      detail = `HTTP ${resp.status}`;
+    }
+    throw new Error(detail);
+  }
+}
+
+/**
+ * GET /me/steps-goal — always 200. When no goal has been set the
+ * response carries goal=0 and null timestamps; callers should treat
+ * `goal === 0` as "unset" rather than a real target.
+ */
+export async function getStepsGoal(token: string): Promise<StepsGoal> {
+  const resp = await fetch(`${config.apiUrl}/me/steps-goal`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<StepsGoal>(resp, { goal: 0, created_at: null, updated_at: null });
+}
+
+/** PUT /me/steps-goal. Set-replacement; returns the persisted row. */
+export async function putStepsGoal(token: string, payload: { goal: number }): Promise<StepsGoal> {
+  const resp = await fetch(`${config.apiUrl}/me/steps-goal`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const saved = await unwrap<StepsGoal | null>(resp, null);
+  if (!saved) throw new Error("API did not return the saved steps goal");
+  return saved;
+}
+
 // --- Recipes ------------------------------------------------------
 
 /**

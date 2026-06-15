@@ -8,9 +8,10 @@ import { SegmentedControl } from "@/components/segmented-control";
 import { WorkoutsView } from "@/components/activities/workouts-view";
 import { OverviewView } from "@/components/activities/overview-view";
 import { RunningView } from "@/components/activities/running-view";
+import { StepsView } from "@/components/activities/steps-view";
 import { TimeframePills, type Timeframe } from "@/components/activities/timeframe-pills";
 
-type ActivityView = "overview" | "workouts" | "running";
+type ActivityView = "overview" | "workouts" | "running" | "steps";
 
 export default function ActivitiesScreen() {
   const [view, setView] = useState<ActivityView>("overview");
@@ -26,6 +27,7 @@ export default function ActivitiesScreen() {
             { value: "overview", label: "Overview" },
             { value: "workouts", label: "Workouts" },
             { value: "running", label: "Running" },
+            { value: "steps", label: "Steps" },
           ]}
         />
         {view !== "workouts" && <TimeframePills value={timeframe} onChange={setTimeframe} />}
@@ -33,6 +35,7 @@ export default function ActivitiesScreen() {
       {view === "overview" && <OverviewView timeframe={timeframe} />}
       {view === "workouts" && <WorkoutsView />}
       {view === "running" && <RunningView timeframe={timeframe} />}
+      {view === "steps" && <StepsView timeframe={timeframe} />}
     </View>
   );
 }
