@@ -11,7 +11,16 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } 
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
-import { listRunningSessions, listWorkouts, type RunningSession, type Workout } from "@/lib/api";
+import {
+  getStepsGoal,
+  listRunningSessions,
+  listSteps,
+  listWorkouts,
+  type RunningSession,
+  type StepsEntry,
+  type Workout,
+} from "@/lib/api";
+import { computeStepsStats } from "@/components/activities/steps-chart";
 import {
   convertWeight,
   formatDistance,
@@ -32,6 +41,8 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [runs, setRuns] = useState<RunningSession[]>([]);
+  const [steps, setSteps] = useState<StepsEntry[]>([]);
+  const [stepsGoal, setStepsGoal] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,12 +59,20 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
           return;
         }
         const bounds = timeframeBounds(timeframe);
-        const [wp, sp] = await Promise.all([
+        const stepsRange = {
+          since: toDateString(bounds.since),
+          until: toDateString(bounds.until),
+        };
+        const [wp, sp, stepsPage, sg] = await Promise.all([
           listWorkouts(token, { ...bounds, limit: 100 }),
           listRunningSessions(token, bounds),
+          listSteps(token, { ...stepsRange, limit: 100 }),
+          getStepsGoal(token),
         ]);
         setWorkouts(wp.items);
         setRuns(sp.activities);
+        setSteps(stepsPage.steps);
+        setStepsGoal(sg.goal);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.toLowerCase().includes("401")) {
@@ -86,6 +105,7 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
   }
 
   const stats = computeStats(workouts, runs, weightUnit);
+  const stepsStats = computeStepsStats(steps, stepsGoal);
 
   // Merge workouts + runs sorted newest-first, take 10.
   type ActivityItem = { kind: "workout"; item: Workout } | { kind: "run"; item: RunningSession };
@@ -160,6 +180,24 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
               }
             />
           </View>
+
+          {/* Steps row — only when step history exists in the window */}
+          {stepsStats !== null && (
+            <View className="flex-row flex-wrap gap-3">
+              <StatTile
+                label="Avg daily steps"
+                value={Math.round(stepsStats.avg).toLocaleString("en-US")}
+              />
+              <StatTile
+                label="Steps goal"
+                value={
+                  stepsStats.goalAttainment !== null
+                    ? `${Math.round(stepsStats.goalAttainment * 100)}%`
+                    : "—"
+                }
+              />
+            </View>
+          )}
 
           {/* Recent activity list */}
           {isEmpty ? (
@@ -412,4 +450,15 @@ function formatActivityDate(iso: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+/** RFC3339 timestamp (or undefined) → YYYY-MM-DD (local) for the steps API. */
+function toDateString(iso: string | undefined): string | undefined {
+  if (!iso) return undefined;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
