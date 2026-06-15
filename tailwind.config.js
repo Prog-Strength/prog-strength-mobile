@@ -24,6 +24,7 @@ module.exports = {
         accent: "#3b82f6",
         "accent-fg": "#ffffff",
         danger: "#ef4444",
+        success: "#22c55e",
       },
     },
   },
