@@ -1740,6 +1740,147 @@ export async function getRunningBestEffortHistory(
   });
 }
 
+// --- Running max-effort estimates --------------------------------
+//
+// "Max-effort estimates" model what the user could run at each standard
+// distance right now — a single curve fit across all their best efforts,
+// then evaluated per distance with a confidence band. Unlike best efforts
+// (their fastest *actual* window), an estimate exists even for distances
+// they've never raced. The API stays metric (distances in meters, pace in
+// seconds-per-kilometer; durations in seconds). Sibling: web lib/api.ts
+// RunningMaxEffort*. See prog-strength-docs/sows/running-max-effort-estimates.md.
+
+/** The estimate block on a summary/detail row. Null when basis is "insufficient_data". */
+export type RunningMaxEffortEstimate = {
+  seconds: number;
+  lower_seconds: number;
+  upper_seconds: number;
+  basis: string;
+  confidence: string;
+  n_points: number;
+  n_distances: number;
+};
+
+/** The user's current actual best at a distance, if they've run it. */
+export type RunningMaxEffortActualBest = {
+  seconds: number;
+  activity_id: string;
+  achieved_at: string; // RFC3339
+};
+
+/** One point in the estimate's history series — the estimate as of a past date. */
+export type RunningMaxEffortHistoryPoint = {
+  as_of: string; // RFC3339
+  seconds: number;
+  lower_seconds: number;
+  upper_seconds: number;
+};
+
+/** One actual best-effort attempt at the distance, plotted as a dot. */
+export type RunningMaxEffortAttempt = {
+  activity_id: string;
+  achieved_at: string; // RFC3339
+  duration_seconds: number;
+  pace_sec_per_km: number;
+  source: string;
+};
+
+/** Headline stats for the detail screen's tile grid. */
+export type RunningMaxEffortStats = {
+  estimated_max_effort_seconds: number | null;
+  current_best_seconds: number | null;
+  gap_seconds: number | null;
+  confidence: string;
+  data_summary: string;
+};
+
+/**
+ * One distance row in the summary list. The estimate and actual-best
+ * fields are flattened (not nested) and may all be null for distances
+ * with insufficient data.
+ */
+export type RunningMaxEffortDistanceSummary = {
+  distance_key: string;
+  distance_label: string;
+  distance_meters: number;
+  estimate_seconds: number | null;
+  lower_seconds: number | null;
+  upper_seconds: number | null;
+  basis: string | null;
+  confidence: string | null;
+  actual_best_seconds: number | null;
+  actual_best_activity_id: string | null;
+  actual_best_achieved_at: string | null;
+};
+
+/** GET /running/max-effort response — the at-a-glance summary across distances. */
+export type RunningMaxEffortSummary = {
+  estimator_version: string;
+  distances: RunningMaxEffortDistanceSummary[];
+};
+
+/** GET /running/max-effort/{distance_key} response — the per-distance detail. */
+export type RunningMaxEffortDetail = {
+  estimator_version: string;
+  distance_key: string;
+  distance_label: string;
+  distance_meters: number;
+  estimate: RunningMaxEffortEstimate | null;
+  actual_best: RunningMaxEffortActualBest | null;
+  estimate_history: RunningMaxEffortHistoryPoint[];
+  attempts: RunningMaxEffortAttempt[];
+  stats: RunningMaxEffortStats;
+};
+
+/**
+ * GET /running/max-effort. Returns the estimator version plus one row per
+ * standard distance; estimate/actual-best fields are null where the model
+ * lacks data. Always 200.
+ */
+export async function getRunningMaxEffortSummary(token: string): Promise<RunningMaxEffortSummary> {
+  const resp = await fetch(`${config.apiUrl}/running/max-effort`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return unwrap<RunningMaxEffortSummary>(resp, {
+    estimator_version: "",
+    distances: [],
+  });
+}
+
+/**
+ * GET /running/max-effort/{distance_key}. Returns the per-distance detail
+ * — estimate (null when basis "insufficient_data", still HTTP 200), actual
+ * best, the estimate history series, raw attempts, and headline stats.
+ */
+export async function getRunningMaxEffort(
+  token: string,
+  distanceKey: string,
+): Promise<RunningMaxEffortDetail> {
+  const resp = await fetch(
+    `${config.apiUrl}/running/max-effort/${encodeURIComponent(distanceKey)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  return unwrap<RunningMaxEffortDetail>(resp, {
+    estimator_version: "",
+    distance_key: distanceKey,
+    distance_label: "",
+    distance_meters: 0,
+    estimate: null,
+    actual_best: null,
+    estimate_history: [],
+    attempts: [],
+    stats: {
+      estimated_max_effort_seconds: null,
+      current_best_seconds: null,
+      gap_seconds: null,
+      confidence: "",
+      data_summary: "",
+    },
+  });
+}
+
 /**
  * GET /personal-records/{exercise_id}/history. Returns the per-workout
  * estimated-1RM series for one exercise. 404 (surfaced as a thrown Error)

@@ -69,8 +69,22 @@ export function RunningPRsView() {
 
   const byKey = new Map((bestEfforts ?? []).map((e) => [e.distance_key, e]));
 
+  // Single unobtrusive entry point into the estimates flow. We have no
+  // per-distance run count here, so we anchor on the first achieved
+  // standard distance (canonical order), falling back to 5K.
+  const featuredEstimateKey = STANDARD_DISTANCES.find((d) => byKey.has(d.key))?.key ?? "5k";
+
   return (
     <ScrollView contentContainerClassName="gap-2 px-4 pb-8">
+      <Pressable
+        onPress={() => router.push(`/activities/running-estimate/${featuredEstimateKey}`)}
+        accessibilityRole="link"
+        className="flex-row items-center justify-between rounded-lg border border-border bg-surface px-3 py-2 active:opacity-70"
+      >
+        <Text className="text-xs text-muted">Max-effort estimates</Text>
+        <Text className="text-xs text-accent">View →</Text>
+      </Pressable>
+
       {error && (
         <View className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2">
           <Text className="text-xs text-danger">{error}</Text>
@@ -179,16 +193,27 @@ function RunningPRCard({
         </View>
       )}
 
-      {/* "View activity →" link — only for achieved records */}
-      {entry && (
+      {/* Action links: "View activity →" only for achieved records;
+          "View estimate →" always (an estimate may exist even for a
+          distance the user has never raced). */}
+      <View className="flex-row gap-4">
+        {entry && (
+          <Pressable
+            onPress={() => router.push(`/activities/run/${entry.activity_id}`)}
+            accessibilityRole="link"
+            className="active:opacity-70"
+          >
+            <Text className="text-xs text-accent">View activity →</Text>
+          </Pressable>
+        )}
         <Pressable
-          onPress={() => router.push(`/activities/run/${entry.activity_id}`)}
+          onPress={() => router.push(`/activities/running-estimate/${distanceKey}`)}
           accessibilityRole="link"
           className="active:opacity-70"
         >
-          <Text className="text-xs text-accent">View activity →</Text>
+          <Text className="text-xs text-accent">View estimate →</Text>
         </Pressable>
-      )}
+      </View>
 
       {/* Expand footer — only for achieved records */}
       {entry && (

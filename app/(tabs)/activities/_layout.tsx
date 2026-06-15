@@ -21,6 +21,10 @@ export default function ActivitiesLayout() {
       />
       <Stack.Screen name="workout/[id]" options={{ title: "Workout" }} />
       <Stack.Screen name="run/[id]" options={{ title: "Run" }} />
+      <Stack.Screen
+        name="running-estimate/[distanceKey]"
+        options={{ title: "Max-Effort Estimate" }}
+      />
     </Stack>
   );
 }
