@@ -1565,7 +1565,17 @@ export async function getMyUsage(token: string, tz: string): Promise<UsageData> 
 
 // --- Running activities -------------------------------------------
 
-export type ActivityType = "running" | "walking" | "cycling" | "other";
+// Widened to include "strength_training" ahead of api PR #79 (unified
+// activity model): GET /activities is about to start returning ALL
+// activity types, not just endurance ones. `listRunningSessions` filters
+// strength_training rows out client-side (see below) so this module keeps
+// seeing endurance-only activities either way.
+//
+// NOTE (twin divergence, temporary): the web lib/api.ts twin does not yet
+// carry this widening or the client-side filter below — that lands in a
+// separate web PR. Until that merges, this file and web's are intentionally
+// out of sync on this one type/filter; re-sync once the web PR ships.
+export type ActivityType = "running" | "walking" | "cycling" | "strength_training" | "other";
 export type IngestSource = "manual_tcx" | "garmin_api";
 
 export type RunningSession = {
@@ -1630,10 +1640,24 @@ export async function listRunningSessions(
   const resp = await fetch(`${config.apiUrl}/activities${qs ? `?${qs}` : ""}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  return unwrap<RunningSessionsPage>(resp, { activities: [], next_before: null });
+  const page = await unwrap<RunningSessionsPage>(resp, { activities: [], next_before: null });
+  // api PR #79 (unified activity model) makes this endpoint return every
+  // activity type, including strength_training, once it merges. Filter
+  // client-side (not a query param) so behavior is identical on the current
+  // API (no strength rows -> no-op) and the new one (strength rows dropped).
+  // Exclude strength_training specifically rather than allowlisting known
+  // endurance types, so any *future* activity_type values still pass
+  // through untouched. This guard becomes moot after the full stage-4
+  // migration but is harmless to leave in place.
+  return {
+    ...page,
+    activities: page.activities.filter((a) => a.activity_type !== "strength_training"),
+  };
 }
 
-/** GET /activities/{id} — includes trackpoints. */
+/** GET /activities/{id} — includes trackpoints. Callers only ever pass ids
+ * sourced from run routes/lists, so this assumes an endurance activity id;
+ * it does not re-check activity_type. */
 export async function getRunningSession(token: string, id: string): Promise<RunningSession> {
   const resp = await fetch(`${config.apiUrl}/activities/${encodeURIComponent(id)}`, {
     headers: { Authorization: `Bearer ${token}` },
