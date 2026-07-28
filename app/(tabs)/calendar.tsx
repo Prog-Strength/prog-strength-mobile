@@ -15,8 +15,8 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { useFocusEffect, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import {
-  listWorkouts,
-  listRunningSessions,
+  listActivities,
+  partitionActivities,
   type Exercise,
   type Workout,
   type RunningSession,
@@ -80,24 +80,20 @@ export default function CalendarScreen() {
       setLoading(true);
       setError(null);
       try {
-        // Fetch workouts and running sessions in parallel for the same
-        // grid window. The workouts call caps at limit=100 (~3 sessions/
-        // day over a 42-day window, plenty of headroom); the runs call
-        // uses range mode, which is uncapped. Pagination not needed at
-        // single-user scale.
-        const [workoutPage, runsPage] = await Promise.all([
-          listWorkouts(token, {
-            since: since.toISOString(),
-            until: until.toISOString(),
-            limit: 100,
-          }),
-          listRunningSessions(token, {
-            since: since.toISOString(),
-            until: until.toISOString(),
-          }),
-        ]);
-        setWorkouts(workoutPage.items);
-        setRuns(runsPage.activities);
+        // ONE unified ranged fetch covers every activity type for the grid
+        // window (stage 4): the range form is uncapped server-side, so the
+        // window itself bounds the result — no pagination needed at
+        // single-user scale. Partition client-side: strength rows adapt onto
+        // the legacy Workout shape (for the workout dots + agenda), and
+        // everything else (runs — and any walk/ride) lands in the runs
+        // bucket so those session types stay visible on the calendar.
+        const page = await listActivities(token, {
+          since: since.toISOString(),
+          until: until.toISOString(),
+        });
+        const { workouts, sessions } = partitionActivities(page.activities);
+        setWorkouts(workouts);
+        setRuns(sessions);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.toLowerCase().includes("401")) {
