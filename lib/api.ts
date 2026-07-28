@@ -64,7 +64,7 @@ export type PersonalRecordEvent = {
 /**
  * A logged training session.
  *
- * Since stage 3 of the unified-activity-model migration this shape is
+ * Since the unified-activity-model migration this shape is
  * produced by `activityToWorkout` from the unified `/activities` DTO for
  * the list/detail/create/update paths. `user_id`/`updated_at` are optional
  * because the unified DTO doesn't carry them (no surface consumes them);
@@ -95,6 +95,17 @@ export type Exercise = {
   equipment: string[];
 };
 
+// --- Workout compat adapters (legacy surface over /activities) -----
+//
+// Every fetcher in this group is a thin compat adapter over the unified
+// /activities surface: same exported name and consumer-facing shape as the
+// old /workouts fetchers, implemented via listActivities/getActivity/
+// createActivity/updateActivity/deleteActivity + activityToWorkout.
+// PREFER THE UNIFIED FETCHERS FOR NEW CODE — these wrappers exist so the
+// existing workout surfaces didn't have to migrate types in the
+// unified-activity-model migration, and they're slated for removal once
+// those surfaces consume Activity directly.
+
 /**
  * Optional filters and pagination params for the workouts list. Mirrors
  * `ListActivitiesOptions` minus the type (fixed to strength_training):
@@ -124,14 +135,13 @@ export type WorkoutsPage = {
 };
 
 /**
- * Lists the authed user's strength sessions, most recent first, via
- * `GET /activities?type=strength_training` — the stage-3 replacement for
+ * Compat adapter (prefer `listActivities` for new code). Lists the authed
+ * user's strength sessions, most recent first, via
+ * `GET /activities?type=strength_training` — the unified replacement for
  * the deprecated `GET /workouts` shim. Each unified item's strength
  * `details` (exercises + personal_records_set, embedded per item by the
  * API's bulk loader) is adapted onto the legacy `Workout` shape so
- * consumers render unchanged. Compat wrapper over `listActivities` —
- * prefer the unified fetcher in new code; this is slated for removal once
- * consumers speak `Activity`.
+ * consumers render unchanged.
  */
 export async function listWorkouts(
   token: string,
@@ -155,13 +165,12 @@ export async function listExercises(): Promise<Exercise[]> {
 }
 
 /**
- * Fetches a single strength session via `GET /activities/{id}` (the
- * stage-3 replacement for `GET /workouts/{id}`) and adapts it onto the
- * legacy `Workout` shape — exercises + personal_records_set from the
- * strength `details`. 404s and non-strength ids both surface as "workout
- * not found" (deliberately indistinguishable, matching the legacy
- * endpoint). Compat wrapper over `getActivity` — prefer the unified
- * fetcher in new code; slated for removal once consumers speak `Activity`.
+ * Compat adapter (prefer `getActivity` for new code). Fetches a single
+ * strength session via `GET /activities/{id}` (the unified replacement
+ * for `GET /workouts/{id}`) and adapts it onto the legacy `Workout`
+ * shape — exercises + personal_records_set from the strength `details`.
+ * 404s and non-strength ids both surface as "workout not found"
+ * (deliberately indistinguishable, matching the legacy endpoint).
  */
 export async function getWorkout(token: string, id: string): Promise<Workout> {
   let activity: Activity;
@@ -445,20 +454,12 @@ export type WorkoutPayload = {
   }[];
 };
 
-// Compat adapters: `listWorkouts`/`getWorkout`/`createWorkout`/
-// `updateWorkout`/`deleteWorkout` are thin wrappers that translate the
-// legacy `/workouts` shapes onto the unified `/activities` fetchers
-// (`listActivities`/`getActivity`/`createActivity`/`updateActivity`/
-// `deleteActivity`) below. They exist so the existing workout surfaces
-// keep their `Workout` types through the stage-4 migration — prefer the
-// unified fetchers directly in NEW code; these wrappers are slated for
-// removal once every consumer speaks `Activity`.
-
 /**
- * Soft-deletes a strength session via `DELETE /activities/{id}` (204;
- * subsequent reads treat the row as gone). Throws the API's `error`
- * envelope on non-2xx — typically a 404 if the ID doesn't exist or
- * isn't owned by this user. Compat wrapper — see the note above.
+ * Compat adapter (prefer `deleteActivity` for new code — this is a bare
+ * delegation). Soft-deletes a strength session via
+ * `DELETE /activities/{id}` (204; subsequent reads treat the row as
+ * gone). Throws the API's `error` envelope on non-2xx — typically a 404
+ * if the ID doesn't exist or isn't owned by this user.
  */
 export async function deleteWorkout(token: string, id: string): Promise<void> {
   return deleteActivity(token, id);
@@ -468,11 +469,9 @@ export async function deleteWorkout(token: string, id: string): Promise<void> {
  * Maps the legacy WorkoutPayload (what every edit surface builds) onto the
  * unified create/update body: performed_at → start_time, ended_at →
  * duration_seconds, exercises → the strength `details` blob. The API
- * re-derives ended_at as start_time + duration on read.
- *
- * Read-direction counterpart: {@link activityToWorkout} (defined ~near
- * `listRunningSessions` far below) maps a unified `Activity` back onto the
- * legacy `Workout` shape.
+ * re-derives ended_at as start_time + duration on read. This is the WRITE
+ * direction of the compat seam; `activityToWorkout` (in the unified
+ * section below) is the READ direction.
  */
 function workoutPayloadToActivityPayload(payload: WorkoutPayload): ActivityPayload {
   const body: ActivityPayload = {
@@ -491,7 +490,8 @@ function workoutPayloadToActivityPayload(payload: WorkoutPayload): ActivityPaylo
 }
 
 /**
- * Creates a strength session via the typed `POST /activities`. Returns
+ * Compat adapter (prefer `createActivity` for new code). Creates a
+ * strength session via the typed `POST /activities`. Returns
  * the created Workout (including any personal_records_set the save
  * triggered — the unified response embeds them in the strength details)
  * so the caller can route to it and surface PRs without a follow-up
@@ -503,10 +503,11 @@ export async function createWorkout(token: string, payload: WorkoutPayload): Pro
 }
 
 /**
- * Full-replacement update of a strength session via the typed
- * `PUT /activities/{id}` — same semantics as the legacy PUT /workouts/{id}
- * (PRs recompute; TCX-enrichment vitals survive). Returns the updated
- * Workout so callers can splice it into local state without a refetch.
+ * Compat adapter (prefer `updateActivity` for new code). Full-replacement
+ * update of a strength session via the typed `PUT /activities/{id}` —
+ * same semantics as the legacy PUT /workouts/{id} (PRs recompute;
+ * TCX-enrichment vitals survive). Returns the updated Workout so callers
+ * can splice it into local state without a refetch.
  */
 export async function updateWorkout(
   token: string,
@@ -1639,15 +1640,18 @@ export type RunningMetrics = {
   all_time: { distance_meters: number; run_count: number };
 };
 
-// --- Unified /activities surface (stage 3) ------------------------
+// --- Unified /activities surface -----------------------------------
 //
 // The one typed surface over every activity type (SOW: unified-activity-
 // model). `Activity` mirrors the Go unifiedReadDTO: the base-row fields
 // (which `RunningSession` above already models — that type stays as the
 // endurance-detail view of the same wire shape) plus the registry-driven
-// `summary` card and the type-keyed `details` payload. The workout
-// fetchers adapt strength activities back onto the legacy `Workout` shape
-// via `activityToWorkout` so components keep their types.
+// `summary` card and the type-keyed `details` payload. The workout compat
+// adapters bridge in both directions: `activityToWorkout` (below) reads a
+// unified strength row back into the legacy `Workout` shape, and
+// `workoutPayloadToActivityPayload` (beside createWorkout above) writes a
+// legacy WorkoutPayload as a typed /activities body — so components keep
+// their types.
 
 /** The registry-rendered card for a list row: title, subtitle, metric chips. */
 export type ActivitySummary = {
@@ -1857,10 +1861,6 @@ export async function deleteActivity(token: string, id: string): Promise<void> {
  * screen renders exercises + PR badges only, no HR chart — so this
  * adapter omits those fields web fills. `source_activity_id` still rides
  * on the underlying `Activity` if a future mobile surface needs it.
- *
- * Write-direction counterpart: {@link workoutPayloadToActivityPayload}
- * (defined ~near `deleteWorkout` above) maps the other way, a legacy
- * `WorkoutPayload` onto the unified create/update body.
  */
 export function activityToWorkout(a: Activity): Workout {
   const details = a.details && "exercises" in a.details ? a.details : undefined;
@@ -1880,12 +1880,17 @@ export function activityToWorkout(a: Activity): Workout {
 }
 
 /**
- * Splits a mixed unified-activity page into the two buckets every
- * all-types surface (Overview, Calendar) renders: strength rows adapted
- * onto the legacy `Workout` shape via {@link activityToWorkout}, and every
- * other type (runs, walks, rides) kept as the endurance `RunningSession`
- * view. One helper so the collapse sites don't each re-implement the
- * filter/map pair.
+ * Splits one unified /activities page into the two buckets the mixed-type
+ * surfaces render: strength sessions adapted onto the legacy `Workout`
+ * shape (via `activityToWorkout`), and everything else (runs, walks,
+ * rides) as the endurance `RunningSession` view.
+ *
+ * Shared by the Activities Overview and the Calendar — the surfaces that
+ * collapsed their workouts+runs merges into ONE `listActivities` fetch in
+ * the unified-activity-model migration. Order within each bucket preserves
+ * the API's most-recent-first order. Twin note: web extracts this helper
+ * to lib/partition-activities.ts for unit tests; mobile has no test runner
+ * (deliberate), so it stays inline here — nothing to gain from the split.
  */
 export function partitionActivities(activities: Activity[]): {
   workouts: Workout[];

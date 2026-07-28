@@ -81,12 +81,13 @@ export default function CalendarScreen() {
       setError(null);
       try {
         // ONE unified ranged fetch covers every activity type for the grid
-        // window (stage 4): the range form is uncapped server-side, so the
-        // window itself bounds the result — no pagination needed at
-        // single-user scale. Partition client-side: strength rows adapt onto
-        // the legacy Workout shape (for the workout dots + agenda), and
-        // everything else (runs — and any walk/ride) lands in the runs
-        // bucket so those session types stay visible on the calendar.
+        // window (unified-activity-model migration): the range form is
+        // uncapped server-side, so the window itself bounds the result —
+        // no pagination needed at single-user scale. Partition client-side:
+        // strength rows adapt onto the legacy Workout shape (for the
+        // workout dots + agenda), and everything else (runs — and any
+        // walk/ride) lands in the runs bucket so those session types stay
+        // visible on the calendar.
         const page = await listActivities(token, {
           since: since.toISOString(),
           until: until.toISOString(),

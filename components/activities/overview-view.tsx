@@ -63,12 +63,13 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
           since: toDateString(bounds.since),
           until: toDateString(bounds.until),
         };
-        // ONE unified fetch covers every activity type (stage 4): windowed
-        // timeframes use the uncapped range form; "all" (no bounds) uses the
-        // cursor form with the page cap. Partition client-side — strength
-        // rows adapt onto the legacy Workout shape (their exercises + PR
-        // events ride along in `details`), everything else (runs and any
-        // walk/ride) is the endurance view the run tiles + rows consume.
+        // ONE unified fetch covers every activity type (unified-activity-
+        // model migration): windowed timeframes use the uncapped range
+        // form; "all" (no bounds) uses the cursor form with the page cap.
+        // Partition client-side — strength rows adapt onto the legacy
+        // Workout shape (their exercises + PR events ride along in
+        // `details`), everything else (runs and any walk/ride) is the
+        // endurance view the run tiles + rows consume.
         const [ap, stepsPage, sg] = await Promise.all([
           bounds.since
             ? listActivities(token, { since: bounds.since, until: bounds.until })
