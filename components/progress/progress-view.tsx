@@ -73,7 +73,10 @@ export function ProgressView() {
         setSelectedPoint(null);
         const [prog, page] = await Promise.all([
           listProgression(t, pattern, sinceISO, untilISO),
-          listWorkouts(t, { since: sinceISO, until: untilISO, limit: 100 }),
+          // Range form is uncapped server-side (the window bounds it) and
+          // the unified /activities endpoint forbids mixing a limit with
+          // the range params, so no limit is passed.
+          listWorkouts(t, { since: sinceISO, until: untilISO }),
         ]);
         if (stale) return;
         setProgression(prog);

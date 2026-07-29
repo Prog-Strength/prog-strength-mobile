@@ -62,14 +62,13 @@ export function DurationChart() {
         }
         const until = new Date();
         const since = new Date(until.getTime() - timeframe.days * 86_400_000);
-        // limit=100 fits a year of training (~3-5 sessions/week × 52
-        // = 150-260) under one query at our beta scale. If a heavy
-        // year ever exceeds 100 we'll see the chart truncate at the
-        // older end — pagination is a follow-up if it shows up.
+        // Range form (since/until) is uncapped server-side — the window
+        // itself bounds the result — so no limit is passed (the unified
+        // /activities endpoint forbids mixing a limit with the range params
+        // anyway). Covers a year of training in one query at beta scale.
         const page = await listWorkouts(t, {
           since: since.toISOString(),
           until: until.toISOString(),
-          limit: 100,
         });
         setWorkouts(page.items);
       })

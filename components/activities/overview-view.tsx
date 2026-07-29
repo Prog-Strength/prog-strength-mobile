@@ -13,9 +13,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { clearToken, getToken } from "@/lib/auth";
 import {
   getStepsGoal,
-  listRunningSessions,
+  listActivities,
   listSteps,
-  listWorkouts,
+  partitionActivities,
   type RunningSession,
   type StepsEntry,
   type Workout,
@@ -63,14 +63,23 @@ export function OverviewView({ timeframe }: { timeframe: Timeframe }) {
           since: toDateString(bounds.since),
           until: toDateString(bounds.until),
         };
-        const [wp, sp, stepsPage, sg] = await Promise.all([
-          listWorkouts(token, { ...bounds, limit: 100 }),
-          listRunningSessions(token, bounds),
+        // ONE unified fetch covers every activity type (unified-activity-
+        // model migration): windowed timeframes use the uncapped range
+        // form; "all" (no bounds) uses the cursor form with the page cap.
+        // Partition client-side — strength rows adapt onto the legacy
+        // Workout shape (their exercises + PR events ride along in
+        // `details`), everything else (runs and any walk/ride) is the
+        // endurance view the run tiles + rows consume.
+        const [ap, stepsPage, sg] = await Promise.all([
+          bounds.since
+            ? listActivities(token, { since: bounds.since, until: bounds.until })
+            : listActivities(token, { limit: 100 }),
           listSteps(token, { ...stepsRange, limit: 100 }),
           getStepsGoal(token),
         ]);
-        setWorkouts(wp.items);
-        setRuns(sp.activities);
+        const { workouts, sessions } = partitionActivities(ap.activities);
+        setWorkouts(workouts);
+        setRuns(sessions);
         setSteps(stepsPage.steps);
         setStepsGoal(sg.goal);
       } catch (err) {
