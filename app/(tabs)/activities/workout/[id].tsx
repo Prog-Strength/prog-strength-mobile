@@ -9,6 +9,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-nati
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { clearToken, getToken } from "@/lib/auth";
 import { getWorkout, type Exercise, type Workout, type WorkoutExercise } from "@/lib/api";
+import { PhotoStrip } from "@/components/activities/photo-strip";
 import { useExerciseCatalog } from "@/components/exercise-catalog-context";
 import { useProfile } from "@/lib/profile-context";
 import { formatWeight } from "@/lib/units";
@@ -109,6 +110,13 @@ export default function WorkoutDetailScreen() {
                 })}
               </View>
             )}
+          </View>
+
+          {/* Photo strip. Bleeds to the screen edges (cancels the parent's
+              horizontal padding) so it can scroll full-width; the strip
+              re-applies its own px-4. */}
+          <View className="-mx-4">
+            <PhotoStrip photos={workout.photos ?? []} activityId={id} onChanged={load} />
           </View>
 
           {chunks.map((chunk, idx) =>

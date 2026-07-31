@@ -47,6 +47,7 @@ import {
   type DistanceUnit,
 } from "@/lib/units";
 import { RunMetricChart } from "@/components/activities/run-metric-chart";
+import { PhotoStrip } from "@/components/activities/photo-strip";
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -189,7 +190,7 @@ export default function RunDetailScreen() {
           ),
         }}
       />
-      <RunDetailContent run={run} unit={unit} />
+      <RunDetailContent run={run} unit={unit} onChanged={load} />
     </>
   );
 }
@@ -198,7 +199,15 @@ export default function RunDetailScreen() {
 // Content (separate component to avoid hooks-before-return issues)
 // ---------------------------------------------------------------------------
 
-function RunDetailContent({ run, unit }: { run: RunningSession; unit: DistanceUnit }) {
+function RunDetailContent({
+  run,
+  unit,
+  onChanged,
+}: {
+  run: RunningSession;
+  unit: DistanceUnit;
+  onChanged: () => void;
+}) {
   const trackpoints = useMemo(() => run.trackpoints ?? [], [run.trackpoints]);
 
   // --- chart point sets ------------------------------------------------------
@@ -282,6 +291,13 @@ function RunDetailContent({ run, unit }: { run: RunningSession; unit: DistanceUn
           <StatTile label="Max HR" value={maxHr} />
           <StatTile label="Calories" value={calories} />
           <StatTile label="Elev Gain" value={elevGain} />
+        </View>
+
+        {/* Photo strip. Bleeds to the screen edges (cancels the parent's
+            horizontal padding) so it can scroll full-width; the strip
+            re-applies its own px-4. */}
+        <View className="-mx-4">
+          <PhotoStrip photos={run.photos ?? []} activityId={run.id} onChanged={onChanged} />
         </View>
 
         {/* Pace chart */}

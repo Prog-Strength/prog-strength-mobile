@@ -84,6 +84,11 @@ export type Workout = {
   // responses (empty array when no PRs); the field is non-optional so
   // UIs can iterate without a null check.
   personal_records_set: PersonalRecordEvent[];
+  // User-attached photos, in display order. Threaded through
+  // `activityToWorkout` from the unified detail DTO's `photos`; present
+  // on the detail GET only (absent — not [] — on list rows). See
+  // `ActivityPhoto` and the photo CRUD fetchers below.
+  photos?: ActivityPhoto[];
 };
 
 /** A catalog entry — the canonical definition of an exercise. */
@@ -1613,6 +1618,11 @@ export type RunningSession = {
   created_at: string;
   // Present on detail GET only.
   trackpoints?: RunningTrackpoint[];
+  // User-attached photos, in display order. Present on the detail GET
+  // only (absent — not [] — on list rows). Field-for-field with the
+  // unified DTO / web twin; see `ActivityPhoto` and the photo CRUD
+  // fetchers.
+  photos?: ActivityPhoto[];
 };
 
 export type RunningTrackpoint = {
@@ -1705,6 +1715,29 @@ export type Activity = RunningSession & {
   // it), so it's declared here — the strength adapter reads it onto
   // `Workout.notes`. Null when the session has none.
   notes?: string | null;
+  // User-attached photos, in display order (`position`). Present on the
+  // detail GET only; absent (not []) on list rows, which don't embed them.
+  // Field names mirror web for cross-repo consistency. See the
+  // ActivityPhoto CRUD fetchers below.
+  photos?: ActivityPhoto[];
+};
+
+/**
+ * One photo attached to an activity. `url` is a presigned full-size GET;
+ * `thumb_url` a presigned thumbnail. `width`/`height` are the stored
+ * full-size pixel dimensions (for aspect-ratio layout without a load).
+ * `caption` is user text or null; `position` is the 0-based display order
+ * within the activity. Kept field-for-field in sync with the web twin and
+ * the API's ActivityPhoto DTO.
+ */
+export type ActivityPhoto = {
+  id: string;
+  url: string;
+  thumb_url: string;
+  width: number;
+  height: number;
+  caption: string | null;
+  position: number;
 };
 
 /** One page of unified activities plus the keyset cursor for the next. */
@@ -1786,6 +1819,112 @@ export async function getActivity(token: string, id: string): Promise<Activity> 
     throw new Error("activity not found");
   }
   return got;
+}
+
+/**
+ * POST /activities/{id}/photos as multipart/form-data under the field
+ * `photo`, with an optional `caption` text field. No Content-Type header —
+ * fetch fills in `multipart/form-data; boundary=...` itself; setting it
+ * manually would omit the boundary and break server-side parsing. Same RN
+ * FormData rule as `uploadAvatar` (a {uri, name, type} part, not a browser
+ * File). Returns the created photo (201).
+ */
+export async function uploadActivityPhoto(
+  token: string,
+  activityId: string,
+  image: PickedImage,
+  caption?: string,
+): Promise<ActivityPhoto> {
+  const form = new FormData();
+  form.append("photo", {
+    uri: image.uri,
+    name: image.fileName,
+    type: image.mimeType,
+  } as unknown as Blob);
+  if (caption !== undefined) form.append("caption", caption);
+  const resp = await fetch(`${config.apiUrl}/activities/${encodeURIComponent(activityId)}/photos`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  const created = await unwrap<ActivityPhoto | null>(resp, null);
+  if (!created) throw new Error("API did not return the created photo");
+  return created;
+}
+
+/**
+ * PATCH /activities/{id}/photos/{photo_id}. Sets (or clears, with null)
+ * the photo's caption. Returns the updated photo.
+ */
+export async function updateActivityPhotoCaption(
+  token: string,
+  activityId: string,
+  photoId: string,
+  caption: string | null,
+): Promise<ActivityPhoto> {
+  const resp = await fetch(
+    `${config.apiUrl}/activities/${encodeURIComponent(activityId)}/photos/${encodeURIComponent(
+      photoId,
+    )}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ caption }),
+    },
+  );
+  const updated = await unwrap<ActivityPhoto | null>(resp, null);
+  if (!updated) throw new Error("API did not return the updated photo");
+  return updated;
+}
+
+/**
+ * PUT /activities/{id}/photos/order. Reorders the activity's photos to
+ * match `photoIds` (the complete set, in the desired order). Returns the
+ * reordered list with updated `position` values.
+ */
+export async function reorderActivityPhotos(
+  token: string,
+  activityId: string,
+  photoIds: string[],
+): Promise<ActivityPhoto[]> {
+  const resp = await fetch(
+    `${config.apiUrl}/activities/${encodeURIComponent(activityId)}/photos/order`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ photo_ids: photoIds }),
+    },
+  );
+  return unwrap<ActivityPhoto[]>(resp, []);
+}
+
+/**
+ * DELETE /activities/{id}/photos/{photo_id} → 204. Throws the API's
+ * `error` envelope on non-2xx (mirrors deleteActivity).
+ */
+export async function deleteActivityPhoto(
+  token: string,
+  activityId: string,
+  photoId: string,
+): Promise<void> {
+  const resp = await fetch(
+    `${config.apiUrl}/activities/${encodeURIComponent(activityId)}/photos/${encodeURIComponent(
+      photoId,
+    )}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  );
+  if (!resp.ok) {
+    let detail: string;
+    try {
+      detail = (await resp.json())?.error ?? `HTTP ${resp.status}`;
+    } catch {
+      detail = `HTTP ${resp.status}`;
+    }
+    throw new Error(detail);
+  }
 }
 
 /**
@@ -1876,6 +2015,10 @@ export function activityToWorkout(a: Activity): Workout {
     exercises: details?.exercises ?? [],
     created_at: a.created_at,
     personal_records_set: details?.personal_records_set ?? [],
+    // Carry the unified detail DTO's photos through the compat seam so the
+    // workout detail screen can render its photo strip. Undefined on list
+    // rows (which don't embed photos) rather than [].
+    photos: a.photos,
   };
 }
 

@@ -42,8 +42,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Prog Strength uses your photo library to set a profile picture and to log meals from photos.",
-          "cameraPermission": "Prog Strength uses the camera to log meals from photos."
+          "photosPermission": "Prog Strength uses your photo library to set a profile picture, log meals from photos, and add photos to your activities.",
+          "cameraPermission": "Prog Strength uses the camera to log meals from photos and capture photos of your activities."
         }
       ],
       "expo-asset"
@@ -58,7 +58,7 @@
       }
     },
     "owner": "jwallace145",
-    "runtimeVersion": "4",
+    "runtimeVersion": "5",
     "updates": {
       "url": "https://u.expo.dev/275c4bcf-ad2d-4d06-a467-21e4c238ec86"
     }
