@@ -84,6 +84,11 @@ export type Workout = {
   // responses (empty array when no PRs); the field is non-optional so
   // UIs can iterate without a null check.
   personal_records_set: PersonalRecordEvent[];
+  // User-attached photos, in display order. Threaded through
+  // `activityToWorkout` from the unified detail DTO's `photos`; present
+  // on the detail GET only (absent — not [] — on list rows). See
+  // `ActivityPhoto` and the photo CRUD fetchers below.
+  photos?: ActivityPhoto[];
 };
 
 /** A catalog entry — the canonical definition of an exercise. */
@@ -1613,6 +1618,11 @@ export type RunningSession = {
   created_at: string;
   // Present on detail GET only.
   trackpoints?: RunningTrackpoint[];
+  // User-attached photos, in display order. Present on the detail GET
+  // only (absent — not [] — on list rows). Field-for-field with the
+  // unified DTO / web twin; see `ActivityPhoto` and the photo CRUD
+  // fetchers.
+  photos?: ActivityPhoto[];
 };
 
 export type RunningTrackpoint = {
@@ -2005,6 +2015,10 @@ export function activityToWorkout(a: Activity): Workout {
     exercises: details?.exercises ?? [],
     created_at: a.created_at,
     personal_records_set: details?.personal_records_set ?? [],
+    // Carry the unified detail DTO's photos through the compat seam so the
+    // workout detail screen can render its photo strip. Undefined on list
+    // rows (which don't embed photos) rather than [].
+    photos: a.photos,
   };
 }
 
