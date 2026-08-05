@@ -55,15 +55,22 @@ in `.env.local` for this to reach your local backends.
 ## Backend prerequisite for OAuth
 
 The login screen opens an in-app browser pointed at
-`${apiUrl}/auth/google/login?return_to=progstrength://auth/callback`.
-The API needs to accept that scheme as a valid `return_to`. In
-`prog-strength-api`, add it to the env:
+`${apiUrl}/auth/google/login?return_to=progstrength:///auth/callback`
+(`Linking.createURL("/auth/callback")`). The API must accept that
+scheme as a valid `return_to`. It matches on **origin** — scheme +
+host — and the deep link has no authority component, so the whitelist
+entry is the bare scheme, not the full callback URL. It lives in
+`prog-strength-api/config.toml` (version-controlled, not an env var):
 
-```
-RETURN_TO_ALLOWED_ORIGINS=https://progstrength.fitness,...,progstrength://auth/callback
+```toml
+[cors]
+return_to_allowed_origins = [
+  "https://progstrength.fitness",
+  "progstrength://",
+]
 ```
 
-(That's a one-time backend change; redeploy the API after.)
+(One-time backend change; redeploy the API after.)
 
 Until that's wired up, openAuthSessionAsync resolves with
 `type === "cancel"` and the login screen does nothing visible. A

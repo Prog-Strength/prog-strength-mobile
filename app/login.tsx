@@ -11,11 +11,13 @@
 //      into the tab navigator.
 //
 // Prerequisite that lives outside this repo: the API's
-// RETURN_TO_ALLOWED_ORIGINS env var must include
-//   progstrength://auth/callback
-// so the backend doesn't reject the return_to as untrusted. Without
-// that, openAuthSessionAsync resolves with type === "cancel" and the
-// screen sits idle.
+// return_to_allowed_origins (prog-strength-api/config.toml) must include
+//   progstrength://
+// so the backend doesn't reject the return_to as untrusted. That entry
+// is the whole origin — the guard compares scheme + host, and our deep
+// link "progstrength:///auth/callback" has no authority component, so a
+// path-carrying entry would never match. Without it the API answers the
+// login redirect with 400 "return_to origin is not allowed".
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, TextInput, View } from "react-native";
 import { useRouter } from "expo-router";
